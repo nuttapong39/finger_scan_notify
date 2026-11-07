@@ -18,8 +18,10 @@ def wsgi_app():
 
 
 def main():
+    import os
     from waitress import serve
     import app as app_module
+    os.umask(0o077)              # SQLite มี key ของ token ทุกคน (systemd ตั้ง UMask=0077 ด้วย)
     s = settings.current
     app_module.startup()
     print(f'Finger Scan Notify — {s.app_env} — http://{s.listen_host}:{s.listen_port}', flush=True)

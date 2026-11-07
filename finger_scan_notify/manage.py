@@ -7,6 +7,7 @@
   backup [--keep=30] [--dir=data/backups]
                         สำรอง SQLite ด้วย VACUUM INTO (ทำได้ขณะระบบทำงาน) สิทธิ์ 600 เก็บ N ไฟล์ล่าสุด
   can-restart           exit 0 ถ้า restart ได้ / 1 ถ้ามี job ส่งย้อนหลังกำลังรัน (deploy.sh ใช้)
+  reset-checkpoint      หลังกู้ไฟล์สำรอง: Monitor เริ่มนับจาก scan ล่าสุด ไม่ส่ง scan เก่าซ้ำ (หยุดบริการก่อน)
   check                 ตรวจ .env, hosoffice (READ ONLY + อ่านได้ครบ 4 ตาราง — SELECT อย่างเดียว),
                         ต่อ MOPH Alert ได้ (เปิด TCP เท่านั้น ไม่ส่งข้อความ), มีบัญชี admin
 """
@@ -86,6 +87,14 @@ def cmd_can_restart(args):
         print(f'✗ มีงานส่งย้อนหลังกำลังทำงาน (job #{job["id"]}) — รอให้เสร็จหรือกดหยุดที่หน้า 🔁 ก่อน restart')
         return 1
     print('✓ restart ได้ (ไม่มีงานส่งย้อนหลังค้าง)')
+    return 0
+
+
+# ── reset-checkpoint ──────────────────────────────────────────
+def cmd_reset_checkpoint(args):
+    database.update_last_scan_id(0)
+    print('✓ ล้างตำแหน่ง scan แล้ว — Monitor รอบถัดไปจะเริ่มนับจาก scan ล่าสุดของ hosoffice (ไม่ส่งย้อนหลัง)')
+    print('  scan ที่ตกหล่นช่วงนี้ ส่งด้วยหน้า 🔁 ตรวจสอบและส่งย้อนหลัง')
     return 0
 
 
@@ -181,13 +190,14 @@ def cmd_check(args):
 
 
 COMMANDS = {'init-admin': cmd_init_admin, 'reset-admin': cmd_reset_admin, 'backup': cmd_backup,
-            'can-restart': cmd_can_restart, 'check': cmd_check}
+            'can-restart': cmd_can_restart, 'reset-checkpoint': cmd_reset_checkpoint, 'check': cmd_check}
 
 
 def main(argv):
     if not argv or argv[0] not in COMMANDS:
         print(__doc__)
         return 2
+    os.umask(0o077)              # ไฟล์ที่สร้าง (SQLite, ไฟล์สำรอง) มี key ของ token — เจ้าของอ่านได้คนเดียว
     database.init_db()
     return COMMANDS[argv[0]](argv[1:])
 

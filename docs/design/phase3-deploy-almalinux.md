@@ -1,6 +1,15 @@
 # Phase 3 — ขึ้น Server (AlmaLinux 9) แบบเดียวกับ ipd-overview / ipd-food
 
-**สถานะ:** ออกแบบแล้ว (6 พ.ย. 2569) รอลงมือ
+**สถานะ:** ลงมือแล้ว (7 พ.ย. 2569) — T1–T6 เสร็จ, T7 รอผู้ใช้สร้าง repo · สคริปต์ `deploy/*.sh` ยังไม่ได้ทดสอบบน AlmaLinux จริง
+
+**ต่างจากแผนระหว่างลงมือ:**
+- `deploy.sh` **ไม่คืน SQLite จากไฟล์สำรองอัตโนมัติ** เมื่อ deploy พัง: ถ้ารุ่นใหม่ส่งแจ้งเตือนไปแล้ว การคืนไฟล์จะย้อน `last_scan_id` และลบ log → Monitor ส่งซ้ำ
+  schema ของระบบนี้เปลี่ยนแบบเพิ่มอย่างเดียว รุ่นเก่าจึงทำงานบนฐานข้อมูลใหม่ได้ · rollback restart เฉพาะเมื่อได้ restart ไปแล้ว (ไม่ฆ่างานส่งย้อนหลัง)
+- การปิด job ส่งย้อนหลังที่ค้าง ย้ายจาก `init_db` ไป `close_stuck_backfill_jobs()` ที่เรียกตอนเปิดแอปเท่านั้น
+  (เดิม `manage.py backup` ตอน 02:30 จะไปปิด job ที่กำลังรันจริง — test ของ `can-restart` จับได้)
+- เพิ่ม `manage.py reset-checkpoint` (หลังกู้ไฟล์สำรอง ไม่ส่ง scan เก่าซ้ำ) เพราะ Dashboard ไม่มีปุ่ม Reset
+- หน้าตั้งค่าฐานข้อมูลเดิมเขียนรหัส MySQL ลงใน HTML (`value=`) — แก้ให้ไม่ส่งรหัสออกไปเลยทั้งสองโหมด (ช่องว่าง = ใช้รหัสเดิม)
+- เครื่อง Windows ได้ `.env` ที่คงพฤติกรรมเดิมไว้จนถึงวันย้าย (`MONITOR_AUTOSTART=1`, `LISTEN_HOST=0.0.0.0`, hosoffice ยังอ่านจาก SQLite)
 **ต้นแบบ:** `C:\Dev\Projects\IPD Overview\SERVER-SETUP-ALMALINUX.md`, `DEPLOYMENT.md`, `deploy/*` (อ่านอย่างเดียว ไม่ได้แก้)
 **ADR:** [0001 — process เดียว เครื่องเดียว](../adr/0001-single-process.md)
 

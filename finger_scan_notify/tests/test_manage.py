@@ -63,6 +63,13 @@ def test_can_restart_blocks_while_backfill_running(tmp_db, capsys):
     assert code == 1 and 'ส่งย้อนหลัง' in out
 
 
+# ── reset-checkpoint (หลังกู้ไฟล์สำรอง: ไม่ส่ง scan เก่าซ้ำ) ───
+def test_reset_checkpoint(tmp_db, capsys):
+    database.advance_last_scan_id(340245)
+    code, out = run(capsys, 'reset-checkpoint')
+    assert code == 0 and database.get_last_scan_id() == 0 and 'ล่าสุด' in out
+
+
 # ── check ─────────────────────────────────────────────────────
 class CheckCursor:
     def __init__(self, conn):

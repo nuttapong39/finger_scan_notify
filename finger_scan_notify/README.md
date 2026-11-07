@@ -7,26 +7,35 @@
 
 ## ⚙️ การติดตั้ง
 
+> **Server จริง (dashboard-srv):** ติดตั้งตาม [SERVER-SETUP-ALMALINUX.md](../SERVER-SETUP-ALMALINUX.md) อัปเดตตาม [DEPLOYMENT.md](../DEPLOYMENT.md)
+> ระบบรันได้ **process เดียว เครื่องเดียว** ([ADR 0001](../docs/adr/0001-single-process.md)) — เครื่องที่ตั้ง `MONITOR_AUTOSTART=1` เท่านั้นที่เริ่ม Monitor เอง
+
 ### ความต้องการระบบ
-- Python 3.8+
-- เข้าถึงฐานข้อมูล MariaDB/MySQL (`hosoffice`)
+- Python 3.10+ (Server ใช้ 3.11)
+- เข้าถึงฐานข้อมูล MariaDB/MySQL (`hosoffice`) — ระบบบังคับ `READ ONLY` ทุก connection
 - Token จาก MOPH Alert (ของแต่ละบุคคล)
 
-### ติดตั้ง dependencies
+### เครื่องพัฒนา
 ```bash
-pip3 install -r requirements.txt
+pip install -r requirements.txt
+cp .env.example .env            # แก้ APP_ENV=development, MONITOR_AUTOSTART=0 (ห้าม 1 ถ้า Server ทำงานอยู่)
+python manage.py init-admin     # ครั้งแรก: แสดงรหัสชั่วคราวของ admin
+python app.py                   # Flask dev server — Server จริงใช้ serve.py (waitress) ผ่าน systemd
 ```
 
-### เริ่มต้นใช้งาน
-```bash
-# วิธีที่ 1: รัน script
-bash run.sh
+เปิด Browser ที่: **http://localhost:5050** → ล็อกอิน `admin` ด้วยรหัสชั่วคราว → ระบบบังคับเปลี่ยนรหัสก่อนใช้งาน
 
-# วิธีที่ 2: รันตรง
-python3 app.py
-```
+### ค่าใน `.env` (ดู `.env.example`)
+| ค่า | ความหมาย |
+|---|---|
+| `APP_ENV` | `production` = ต้องมี `SECRET_KEY` และ `HOSOFFICE_*` ไม่งั้นไม่ยอมเริ่ม |
+| `SECRET_KEY` | key ของ session (ไม่ตั้งบนเครื่องพัฒนา = สุ่มใหม่ทุกครั้งที่เปิด) |
+| `HOSOFFICE_*` | ค่าเชื่อมต่อ hosoffice — มีแล้วหน้า "เชื่อมต่อฐานข้อมูล" แก้ไม่ได้ และรหัสใน SQLite ถูกลบ |
+| `MONITOR_AUTOSTART` | `1` = เครื่องหลัก (ตั้งได้เครื่องเดียว) |
+| `LISTEN_HOST` / `LISTEN_PORT` | ค่าเริ่มต้น `127.0.0.1:5050` |
 
-เปิด Browser ที่: **http://localhost:5050**
+### คำสั่งดูแลระบบ (`manage.py`)
+`init-admin` · `reset-admin` (ลืมรหัส) · `backup [--keep=30]` · `can-restart` · `reset-checkpoint` · `check` (hosoffice READ ONLY / 4 ตาราง / MOPH / admin)
 
 ---
 
@@ -88,7 +97,12 @@ Content-Type: application/json
 
 ```
 finger_scan_notify/
-├── app.py              # Flask app: Monitor loop + routes เดิม
+├── app.py              # Flask app: Monitor loop + routes เดิม + startup()
+├── serve.py            # จุดเข้าของ Server: waitress process เดียว (systemd)
+├── settings.py         # ค่าจาก .env (ความลับ, hosoffice, MONITOR_AUTOSTART)
+├── auth.py             # ล็อกอิน admin + guard ทุก route
+├── manage.py           # คำสั่งดูแลระบบบน Server
+├── .env.example        # ต้นแบบ .env (ไฟล์ .env จริง git ไม่เก็บ)
 ├── routes_phase2.py    # หน้า/API ตรวจสอบและส่งย้อนหลัง + เตือนยังไม่สแกน
 ├── scan_types.py       # กฎเดียวของทิศทาง Scan (เข้า/ออก)
 ├── hosoffice.py        # อ่าน MySQL hosoffice ทั้งหมด (read-only, fail closed)
@@ -100,7 +114,7 @@ finger_scan_notify/
 ├── reminders.py        # เตือนยังไม่สแกน (ตัดสินใจ + loop ทุก 60 วินาที)
 ├── flex_theme.py       # Theme ของการ์ด + validation
 ├── requirements.txt / requirements-dev.txt
-├── run.sh / run.bat    # Startup script
+├── run.sh / run.bat    # Startup script (เครื่องพัฒนา)
 ├── tests/              # pytest (ไม่ต่อ MySQL จริง)
 ├── templates/
 │   ├── base.html       # Base layout + sidebar
@@ -110,8 +124,10 @@ finger_scan_notify/
 │   ├── config_database.html / config_api.html / config_tokens.html
 │   ├── debug.html
 │   └── logs.html
-└── data/
-    └── app_config.db   # SQLite (สร้างอัตโนมัติ)
+└── data/               # git ไม่เก็บ — มี key ของ token ทุกคน (สิทธิ์ 600)
+    ├── app_config.db   # SQLite (สร้างอัตโนมัติ)
+    └── backups/        # manage.py backup
+../deploy/              # systemd unit, nginx conf, sudoers, cron, preflight.sh, deploy.sh, smoke_after_deploy.sh
 ```
 
 ---

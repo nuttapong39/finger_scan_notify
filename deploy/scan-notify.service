@@ -1,0 +1,43 @@
+# systemd — Finger Scan Notify บน dashboard-srv (AlmaLinux 9)
+# คัดลอกไป /etc/systemd/system/scan-notify.service แล้ว: sudo systemctl daemon-reload && sudo systemctl enable --now scan-notify
+#
+# process เดียวเท่านั้น (ADR 0001): หน้าเว็บ + Monitor + การเตือน + job ส่งย้อนหลัง อยู่ใน process นี้
+# ห้ามสร้าง unit ที่สอง ห้ามรัน serve.py / app.py ด้วยมือคู่กัน — บุคลากรจะได้แจ้งเตือนซ้ำ
+# Monitor เริ่มเองเฉพาะเมื่อ .env ตั้ง MONITOR_AUTOSTART=1 (เครื่องหลัก)
+
+[Unit]
+Description=Finger Scan Notify (Chiang Klang Hospital) - single process, see docs/adr/0001
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=scannotify
+Group=scannotify
+WorkingDirectory=/var/www/scan-notify/finger_scan_notify
+ExecStart=/var/www/scan-notify/.venv/bin/python serve.py
+Restart=on-failure
+RestartSec=5
+# หยุดแล้วรอ thread ที่กำลังส่งจบ (ส่งข้อความหนึ่งครั้ง timeout 15 วินาที)
+TimeoutStopSec=30
+Environment=TZ=Asia/Bangkok
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+# hardening: เขียนได้แค่ data/ (SQLite + ไฟล์สำรอง) ที่เหลืออ่านอย่างเดียว
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/www/scan-notify/finger_scan_notify/data
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+# สำรองฐานข้อมูลของระบบ (SQLite: token, log, Theme, ค่าเตือน, บัญชี admin) ทุกวัน 02:30 เก็บ 30 ไฟล์ล่าสุด
+# คัดลอกไป /etc/cron.d/scan-notify (รูปแบบ cron.d มีช่องชื่อผู้ใช้) แล้ว: sudo chmod 644 /etc/cron.d/scan-notify
+# ไฟล์สำรองมี key ของ Person token ทุกคน (สิทธิ์ 600) และอยู่ดิสก์เดียวกับต้นฉบับ — คัดลอกออกไปเก็บที่อื่นเป็นระยะ
+# manage.py backup ไม่แตะ hosoffice และสำรองได้ขณะระบบทำงาน (VACUUM INTO)
+CRON_TZ=Asia/Bangkok
+30 2 * * * scannotify cd /var/www/scan-notify/finger_scan_notify && /var/www/scan-notify/.venv/bin/python manage.py backup --keep=30 >> data/backup.log 2>&1
