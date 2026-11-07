@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Log การแจ้งเตือน{% endblock %}
+{% block page_title %}Log การแจ้งเตือน{% endblock %}
+{% block page_sub %}ประวัติ Line Notify + MOPH Alert{% endblock %}
+{% block topbar_actions %}
+  <button class="btn btn-outline btn-sm" onclick="location.reload()">🔄 รีเฟรช</button>
+{% endblock %}
+{% block content %}
+{% set success_count = logs|selectattr('status','equalto','success')|list|length %}
+{% set error_count   = logs|selectattr('status','equalto','error')|list|length %}
+{% set line_count    = logs|selectattr('provider','equalto','LINE_NOTIFY')|list|length %}
+{% set moph_count    = logs|selectattr('provider','equalto','MOPH_ALERT')|list|length %}
+<div style="display:flex; gap:14px; margin-bottom:24px; flex-wrap:wrap;">
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 20px;border-top:3px solid var(--accent-blue);">
+    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:700;">ทั้งหมด</div>
+    <div style="font-size:28px;font-weight:700;font-family:var(--font-mono);color:var(--accent-blue);margin-top:4px;">{{ logs|length }}</div>
+  </div>
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 20px;border-top:3px solid var(--accent-green);">
+    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:700;">สำเร็จ</div>
+    <div style="font-size:28px;font-weight:700;font-family:var(--font-mono);color:var(--accent-green);margin-top:4px;">{{ success_count }}</div>
+  </div>
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 20px;border-top:3px solid var(--accent-red);">
+    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:700;">ผิดพลาด</div>
+    <div style="font-size:28px;font-weight:700;font-family:var(--font-mono);color:var(--accent-red);margin-top:4px;">{{ error_count }}</div>
+  </div>
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 20px;border-top:3px solid #00BA7C;">
+    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:700;">Line Notify</div>
+    <div style="font-size:28px;font-weight:700;font-family:var(--font-mono);color:#00BA7C;margin-top:4px;">{{ line_count }}</div>
+  </div>
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 20px;border-top:3px solid #0891B2;">
+    <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;font-weight:700;">MOPH Alert</div>
+    <div style="font-size:28px;font-weight:700;font-family:var(--font-mono);color:#0891B2;margin-top:4px;">{{ moph_count }}</div>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">📋 รายการ Log</div>
+    <input type="text" id="log-search" class="form-control" placeholder="🔍 ค้นหา..."
+           style="width:200px;padding:6px 12px;font-size:12px;" oninput="filterLogs()">
+  </div>
+  <div class="table-wrap" style="max-height:calc(100vh - 360px);overflow-y:auto;">
+    <table id="log-table">
+      <thead><tr><th>เวลาส่ง</th><th>Person ID</th><th>ชื่อ</th><th>Provider</th><th>ประเภท</th><th>เวลาสแกน</th><th>HTTP</th><th>สถานะ</th><th>Response</th></tr></thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);white-space:nowrap;">{{ log.created_at }}</td>
+          <td style="font-family:var(--font-mono);color:var(--accent-cyan);font-size:12px;">{{ log.person_id or '-' }}</td>
+          <td style="font-weight:600;color:var(--text-primary);font-size:12px;">{{ log.person_name or '-' }}</td>
+          <td>
+            {% if log.provider == 'LINE_NOTIFY' %}<span class="badge" style="background:rgba(0,186,124,0.15);color:#00BA7C;">💚 Line</span>
+            {% elif log.provider == 'MOPH_ALERT' %}<span class="badge" style="background:rgba(8,145,178,0.15);color:#0891B2;">🏥 MOPH</span>
+            {% else %}<span class="badge badge-other">-</span>{% endif %}
+          </td>
+          <td>
+            {% if log.scan_type == 'เข้างาน' %}<span class="badge badge-in">🟢 เข้างาน</span>
+            {% elif log.scan_type == 'ออกงาน' %}<span class="badge badge-out">🔴 ออกงาน</span>
+            {% else %}<span class="badge badge-other">{{ log.scan_type or '-' }}</span>{% endif %}
+          </td>
+          <td style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);white-space:nowrap;">{{ log.scan_datetime or '-' }}</td>
+          <td>
+            {% set code = log.http_code or 0 %}
+            <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:{{ 'var(--accent-green)' if code==200 else ('var(--accent-red)' if code>0 else 'var(--text-muted)') }};">{{ code if code>0 else '-' }}</span>
+          </td>
+          <td>{% if log.status=='success' %}<span class="badge badge-success">✅</span>{% else %}<span class="badge badge-error">❌</span>{% endif %}</td>
+          <td><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);" title="{{ log.response or '' }}">{{ (log.response or '-')[:45] }}{% if log.response and log.response|length>45 %}…{% endif %}</span></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" style="text-align:center;padding:48px;color:var(--text-muted);">ยังไม่มี log</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function filterLogs(){
+  const q=document.getElementById('log-search').value.toLowerCase();
+  document.querySelectorAll('#log-table tbody tr').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(q)?'':'none';});
+}
+</script>
+{% endblock %}

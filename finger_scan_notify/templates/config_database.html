@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}ตั้งค่าฐานข้อมูล{% endblock %}
+{% block page_title %}ตั้งค่าการเชื่อมต่อฐานข้อมูล{% endblock %}
+{% block page_sub %}MySQL / MariaDB — hosoffice{% endblock %}
+
+{% block content %}
+<div style="max-width: 640px;">
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-header">
+      <div class="card-title">🗄️ Database Connection</div>
+    </div>
+
+    <form method="POST" id="db-form">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Host / IP</label>
+          <input type="text" name="host" class="form-control"
+                 value="{{ cfg.host or '192.168.1.250' }}" placeholder="192.168.1.250">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Port</label>
+          <input type="number" name="port" class="form-control"
+                 value="{{ cfg.port or 3306 }}" placeholder="3306">
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input type="text" name="username" class="form-control"
+                 value="{{ cfg.username or '' }}" placeholder="root" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="password" class="form-control"
+                 value="{{ cfg.password or '' }}" autocomplete="new-password">
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Database Name</label>
+          <input type="text" name="database_name" class="form-control"
+                 value="{{ cfg.database_name or 'hosoffice' }}" placeholder="hosoffice">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Table Name</label>
+          <input type="text" name="table_name" class="form-control"
+                 value="{{ cfg.table_name or 'fingle_scan' }}" placeholder="fingle_scan">
+        </div>
+      </div>
+
+      <div class="form-group" style="max-width:200px;">
+        <label class="form-label">Poll Interval (วินาที)</label>
+        <input type="number" name="poll_interval" class="form-control"
+               value="{{ cfg.poll_interval or 30 }}" min="10" max="3600">
+        <div class="form-hint">ระยะเวลาตรวจสอบข้อมูลใหม่ (ขั้นต่ำ 10 วินาที)</div>
+      </div>
+
+      <div style="display:flex; gap:12px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-outline" onclick="testConnection()">
+          🔌 ทดสอบการเชื่อมต่อ
+        </button>
+        <button type="submit" name="save" class="btn btn-primary">
+          💾 บันทึกการตั้งค่า
+        </button>
+      </div>
+    </form>
+
+    <!-- Test result -->
+    <div id="test-result" style="display:none; margin-top:16px;"></div>
+  </div>
+
+  <!-- Info card -->
+  <div class="card" style="background:rgba(29,140,248,0.05); border-color:rgba(29,140,248,0.3);">
+    <div style="font-size:13px; color:var(--text-secondary); line-height:1.8;">
+      <strong style="color:var(--accent-blue);">ℹ️ ข้อมูลตาราง fingle_scan</strong><br>
+      <ul style="margin-top:8px; padding-left:20px;">
+        <li><code style="color:var(--accent-cyan);">PERSON_ID</code> — รหัสบุคลากร (ใช้ match กับ Token)</li>
+        <li><code style="color:var(--accent-cyan);">SCAN_DATE_TIME</code> — วันเวลาสแกน</li>
+        <li><code style="color:var(--accent-cyan);">SCAN_TYPE</code> — 0-3 = เข้างาน, 4-5 = ออกงาน</li>
+        <li><code style="color:var(--accent-cyan);">HR_FULLNAME</code> — ชื่อ-สกุลบุคลากร</li>
+        <li><code style="color:var(--accent-cyan);">ISINPUT</code> — ประเภทการบันทึก (FACESCAN ฯลฯ)</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function testConnection() {
+  const form = document.getElementById('db-form');
+  const data = new FormData(form);
+  data.append('test', '1');
+  
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '⏳ กำลังทดสอบ...';
+  
+  fetch('/config/database', {
+    method: 'POST',
+    body: data
+  })
+  .then(r => r.json())
+  .then(d => {
+    const el = document.getElementById('test-result');
+    el.style.display = 'block';
+    el.innerHTML = `<div class="alert ${d.success ? 'alert-success' : 'alert-error'}">
+      ${d.success ? '✅' : '❌'} ${d.message}
+    </div>`;
+    btn.disabled = false;
+    btn.textContent = '🔌 ทดสอบการเชื่อมต่อ';
+  })
+  .catch(e => {
+    btn.disabled = false;
+    btn.textContent = '🔌 ทดสอบการเชื่อมต่อ';
+    showToast('เกิดข้อผิดพลาด', 'error');
+  });
+}
+</script>
+{% endblock %}

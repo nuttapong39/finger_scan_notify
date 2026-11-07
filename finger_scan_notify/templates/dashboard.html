@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard การสแกนเข้า-ออกงาน{% endblock %}
+{% block page_sub %}ข้อมูลวันนี้ — {{ today }}{% endblock %}
+{% block topbar_actions %}
+  <div id="monitor-control">
+    <button class="btn btn-success btn-sm" id="btn-start" onclick="startMonitor()">▶ เริ่ม Monitor</button>
+    <button class="btn btn-danger btn-sm" id="btn-stop" onclick="stopMonitor()" style="display:none">⏹ หยุด</button>
+  </div>
+  <button class="btn btn-outline btn-sm" onclick="refreshDashboard()">🔄 รีเฟรช</button>
+{% endblock %}
+
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card blue">
+    <div class="stat-icon">👥</div>
+    <div class="stat-value" id="stat-persons">{{ stats.total_person or 0 }}</div>
+    <div class="stat-label">บุคลากรที่สแกนวันนี้</div>
+  </div>
+  <div class="stat-card amber">
+    <div class="stat-icon">📱</div>
+    <div class="stat-value" id="stat-total">{{ stats.total_scan or 0 }}</div>
+    <div class="stat-label">จำนวนการสแกนทั้งหมด</div>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-icon">🟢</div>
+    <div class="stat-value" id="stat-checkin">{{ stats.checkin or 0 }}</div>
+    <div class="stat-label">เข้างาน</div>
+  </div>
+  <div class="stat-card red">
+    <div class="stat-icon">🔴</div>
+    <div class="stat-value" id="stat-checkout">{{ stats.checkout or 0 }}</div>
+    <div class="stat-label">ออกงาน</div>
+  </div>
+</div>
+
+<!-- Monitor status bar -->
+<div id="monitor-bar" style="display:none; margin-bottom:24px;">
+  <div class="alert alert-success">
+    🟢 <strong>Monitor กำลังทำงาน</strong> — 
+    ตรวจสอบล่าสุด: <span id="bar-last-check">-</span> · 
+    แจ้งเตือนแล้ว: <span id="bar-total-notified">0</span> รายการ · 
+    ข้อผิดพลาด: <span id="bar-errors">0</span>
+  </div>
+</div>
+
+<!-- Charts row -->
+<div class="grid-2" style="margin-bottom:24px;">
+  <!-- Hourly chart -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">📈 การสแกนรายชั่วโมง (วันนี้)</div>
+    </div>
+    <canvas id="hourlyChart" height="120"></canvas>
+  </div>
+
+  <!-- 7-day trend -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">📅 แนวโน้ม 7 วันล่าสุด</div>
+    </div>
+    <canvas id="trendChart" height="120"></canvas>
+  </div>
+</div>
+
+<!-- Bottom row -->
+<div class="grid-2">
+  <!-- Department breakdown -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">🏥 สแกนตามกลุ่มงาน (วันนี้)</div>
+    </div>
+    <div id="dept-list">
+      {% for d in dept %}
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+        <div style="flex:1; font-size:12px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+          {{ d.HR_DEP_NAME or 'ไม่ระบุ' }}
+        </div>
+        <div style="font-size:13px; font-weight:700; font-family:var(--font-mono); color:var(--accent-cyan); min-width:32px; text-align:right;">
+          {{ d.cnt }}
+        </div>
+        <div style="width:80px; height:6px; background:var(--bg-base); border-radius:3px; overflow:hidden;">
+          <div style="height:100%; background:var(--accent-blue); width:{{ [((d.cnt / (dept[0].cnt if dept else 1))*100)|int, 100]|min }}%;"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Recent scans table -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">🕐 การสแกนล่าสุด</div>
+    </div>
+    <div class="table-wrap" style="max-height:320px; overflow-y:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>เวลา</th>
+            <th>ชื่อ</th>
+            <th>สถานะ</th>
+          </tr>
+        </thead>
+        <tbody id="recent-tbody">
+          {% for r in recent %}
+          <tr>
+            <td style="font-family:var(--font-mono); font-size:11px; white-space:nowrap; color:var(--text-muted);">
+              {{ r.SCAN_DATE_TIME }}
+            </td>
+            <td>
+              <div style="font-weight:600; font-size:13px; color:var(--text-primary);">{{ r.HR_FULLNAME or '-' }}</div>
+              <div style="font-size:11px; color:var(--text-muted);">{{ r.HR_DEP_SUB_NAME or '' }}</div>
+            </td>
+            <td>
+              {% if r.DIRECTION == 'in' %}
+                <span class="badge badge-in">🟢 เข้างาน</span>
+              {% elif r.DIRECTION == 'out' %}
+                <span class="badge badge-out">🔴 ออกงาน</span>
+              {% else %}
+                <span class="badge badge-other">📍 {{ r.SCAN_TYPE }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% include '_flex_editor.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Chart defaults
+Chart.defaults.color = '#94a3b8';
+Chart.defaults.borderColor = '#1e3a5f';
+
+// Init charts
+const hourlyData = {{ hourly | tojson }};
+const trendData  = {{ trend  | tojson }};
+
+// Hourly chart
+const hLabels = Array.from({length:24}, (_,i) => i+':00');
+const hValues = Array(24).fill(0);
+hourlyData.forEach(h => { hValues[h.hr] = h.cnt; });
+
+const hourlyChart = new Chart(document.getElementById('hourlyChart'), {
+  type: 'bar',
+  data: {
+    labels: hLabels,
+    datasets: [{
+      data: hValues,
+      backgroundColor: 'rgba(29,140,248,0.6)',
+      borderColor: '#1d8cf8',
+      borderWidth: 1,
+      borderRadius: 3
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { beginAtZero: true, ticks: { precision: 0 } }
+    }
+  }
+});
+
+// Trend chart
+const trendChart = new Chart(document.getElementById('trendChart'), {
+  type: 'line',
+  data: {
+    labels: trendData.map(t => t.d),
+    datasets: [{
+      data: trendData.map(t => t.cnt),
+      borderColor: '#00d4ff',
+      backgroundColor: 'rgba(0,212,255,0.1)',
+      borderWidth: 2,
+      pointRadius: 4,
+      pointBackgroundColor: '#00d4ff',
+      tension: 0.4,
+      fill: true
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { beginAtZero: true, ticks: { precision: 0 } }
+    }
+  }
+});
+
+// Monitor control
+function startMonitor() {
+  fetch('/monitor/start', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      showToast(d.message, d.success ? 'success' : 'error');
+      updateMonitorUI();
+    });
+}
+function stopMonitor() {
+  fetch('/monitor/stop', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      showToast(d.message, 'info');
+      updateMonitorUI();
+    });
+}
+
+function updateMonitorUI() {
+  fetch('/monitor/status')
+    .then(r => r.json())
+    .then(d => {
+      document.getElementById('btn-start').style.display = d.running ? 'none' : '';
+      document.getElementById('btn-stop').style.display  = d.running ? '' : 'none';
+      document.getElementById('monitor-bar').style.display = d.running ? '' : 'none';
+      if (d.last_check) document.getElementById('bar-last-check').textContent = d.last_check;
+      document.getElementById('bar-total-notified').textContent = d.total_notified || 0;
+      document.getElementById('bar-errors').textContent = d.errors || 0;
+    });
+}
+
+function refreshDashboard() {
+  fetch('/api/dashboard-data')
+    .then(r => r.json())
+    .then(d => {
+      // Update stats
+      document.getElementById('stat-persons').textContent  = d.stats.total_person || 0;
+      document.getElementById('stat-total').textContent    = d.stats.total_scan   || 0;
+      document.getElementById('stat-checkin').textContent  = d.stats.checkin      || 0;
+      document.getElementById('stat-checkout').textContent = d.stats.checkout     || 0;
+      
+      // Update hourly chart
+      const hv = Array(24).fill(0);
+      (d.hourly || []).forEach(h => { hv[h.hr] = h.cnt; });
+      hourlyChart.data.datasets[0].data = hv;
+      hourlyChart.update();
+      
+      // Update trend chart
+      trendChart.data.labels = (d.trend || []).map(t => t.d);
+      trendChart.data.datasets[0].data = (d.trend || []).map(t => t.cnt);
+      trendChart.update();
+      
+      showToast('รีเฟรชข้อมูลเรียบร้อย', 'success');
+    });
+}
+
+// Auto refresh every 60s
+setInterval(() => { refreshDashboard(); updateMonitorUI(); }, 60000);
+updateMonitorUI();
+</script>
+{% endblock %}

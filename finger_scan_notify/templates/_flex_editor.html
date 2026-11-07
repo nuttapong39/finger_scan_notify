@@ -1,0 +1,300 @@
+{# ตัวปรับแต่ง Flex card (Theme) — include จาก dashboard.html
+   ตัวอย่างสด: server สร้าง Flex JSON ตัวเดียวกับที่ส่งจริง (/api/flex-preview) แล้ว renderer ด้านล่างวาดเป็น HTML
+   (ประมาณหน้าตา LINE ไม่ใช่ pixel-perfect — ยืนยันของจริงด้วยปุ่ม "ส่งทดสอบ") #}
+{% macro color_field(key, label) %}
+<label class="fx-color">
+  <span>{{ label }}</span>
+  <input type="color" id="fx-{{ key }}" data-key="{{ key }}">
+  <code id="fx-hex-{{ key }}"></code>
+</label>
+{% endmacro %}
+
+<style>
+.fx-grid { display:grid; grid-template-columns: minmax(0,1fr) 340px; gap:24px; align-items:start; }
+@media (max-width: 900px) { .fx-grid { grid-template-columns: 1fr; } }
+.fx-group { border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; margin-bottom:14px; }
+.fx-group h4 { font-size:12px; color:var(--text-secondary); margin-bottom:10px; letter-spacing:.3px; }
+.fx-colors { display:flex; flex-wrap:wrap; gap:18px; }
+.fx-color { display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--text-secondary); }
+.fx-color input[type=color] { width:56px; height:34px; padding:0; border:1px solid var(--border-light); border-radius:6px; background:none; cursor:pointer; }
+.fx-color code { font-family:var(--font-mono); font-size:11px; color:var(--text-muted); }
+.fx-row { display:flex; gap:12px; flex-wrap:wrap; }
+.fx-row > .form-group { flex:1 1 160px; margin-bottom:0; }
+.fx-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.fx-toggle { display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+.fx-toggle .btn.active { background:var(--accent-blue); color:#fff; border-color:var(--accent-blue); }
+.fx-phone { background:#8FA9B8; border-radius:14px; padding:18px 12px; min-height:200px; display:flex; justify-content:center; }
+.fx-err { color:var(--accent-red); font-size:12px; margin-top:8px; min-height:16px; }
+.fx-note { font-size:11px; color:var(--text-muted); margin-top:8px; line-height:1.5; }
+</style>
+
+<details class="card" id="flex-editor" style="margin-top:24px;">
+  <summary class="card-title" style="cursor:pointer;">🎨 ปรับแต่ง Flex card (การ์ดแจ้งเตือนใน LINE)</summary>
+  <div class="fx-grid" style="margin-top:16px;">
+
+    <div>
+      <div class="fx-group">
+        <h4>🟢 เข้างาน — สี gradient ของหัวการ์ด</h4>
+        <div class="fx-colors">
+          {{ color_field('checkin_start', 'สีเริ่ม') }}
+          {{ color_field('checkin_end', 'สีจบ') }}
+          {{ color_field('checkin_accent', 'Accent (เวลา/ป้าย)') }}
+        </div>
+      </div>
+      <div class="fx-group">
+        <h4>🔴 ออกงาน — สี gradient ของหัวการ์ด</h4>
+        <div class="fx-colors">
+          {{ color_field('checkout_start', 'สีเริ่ม') }}
+          {{ color_field('checkout_end', 'สีจบ') }}
+          {{ color_field('checkout_accent', 'Accent (เวลา/ป้าย)') }}
+        </div>
+      </div>
+      <div class="fx-group">
+        <h4>🟠 เตือนยังไม่สแกนเข้างาน</h4>
+        <div class="fx-colors">
+          {{ color_field('reminder_in_start', 'สีเริ่ม') }}
+          {{ color_field('reminder_in_end', 'สีจบ') }}
+          {{ color_field('reminder_in_accent', 'Accent (ข้อความ/ปุ่ม)') }}
+        </div>
+      </div>
+      <div class="fx-group">
+        <h4>🟡 เตือนยังไม่สแกนออกงาน</h4>
+        <div class="fx-colors">
+          {{ color_field('reminder_out_start', 'สีเริ่ม') }}
+          {{ color_field('reminder_out_end', 'สีจบ') }}
+          {{ color_field('reminder_out_accent', 'Accent (ข้อความ/ปุ่ม)') }}
+        </div>
+      </div>
+      <div class="fx-group">
+        <h4>📨 ส่งย้อนหลัง — header เทา + ข้อความเตือน</h4>
+        <div class="fx-colors">
+          {{ color_field('backfill_start', 'สีเริ่ม') }}
+          {{ color_field('backfill_end', 'สีจบ') }}
+          {{ color_field('backfill_text', 'ข้อความ "ส่งย้อนหลัง"') }}
+        </div>
+      </div>
+      <div class="fx-group">
+        <h4>มุม gradient: <span id="fx-angle-val">135</span>°</h4>
+        <input type="range" id="fx-angle" data-key="angle" min="0" max="360" step="5" style="width:100%;">
+        <div class="form-hint">0° = ล่างขึ้นบน · 90° = ซ้ายไปขวา · 135° = เฉียง</div>
+      </div>
+      <div class="fx-group">
+        <h4>ข้อความ</h4>
+        <div class="fx-row">
+          <div class="form-group">
+            <label class="form-label">หัวการ์ด: เข้างาน</label>
+            <input type="text" class="form-control" id="fx-checkin_label" data-key="checkin_label" maxlength="20">
+          </div>
+          <div class="form-group">
+            <label class="form-label">หัวการ์ด: ออกงาน</label>
+            <input type="text" class="form-control" id="fx-checkout_label" data-key="checkout_label" maxlength="20">
+          </div>
+        </div>
+        <div class="form-group" style="margin:12px 0 0;">
+          <label class="form-label">ข้อความ footer</label>
+          <input type="text" class="form-control" id="fx-footer_text" data-key="footer_text" maxlength="60">
+        </div>
+        <div class="form-hint">แบบพิเศษ (เข้างานพิเศษ / ออกงานพิเศษ) คงชื่อเดิมไว้ · ใช้กับบุคลากรทุกคน</div>
+      </div>
+
+      <div class="fx-actions">
+        <button class="btn btn-primary" id="fx-save">💾 บันทึก Theme</button>
+        <button class="btn btn-outline" id="fx-reset">↩ คืนค่าเริ่มต้น</button>
+      </div>
+      <div class="fx-group" style="margin-top:14px;">
+        <h4>ส่งทดสอบเข้า LINE จริง (ใช้ค่าที่ตั้งอยู่ตอนนี้ แม้ยังไม่บันทึก)</h4>
+        {% if flex_tokens %}
+        <div class="fx-actions">
+          <select id="fx-test-token" class="form-control" style="max-width:260px;">
+            {% for t in flex_tokens %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+          </select>
+          <button class="btn btn-amber" id="fx-test">📤 ส่งทดสอบ</button>
+        </div>
+        <div class="form-hint">ข้อความจะถูกส่งถึงบุคลากรที่เลือกจริง (ใช้ข้อมูลสมมติ ตามแบบการ์ดที่กำลังดูตัวอย่างด้านขวา)</div>
+        {% else %}
+        <div class="form-hint">ยังไม่มี Person token แบบ MOPH Alert ที่เปิดใช้งาน — เพิ่มได้ที่ ตั้งค่า → จัดการ Token</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div>
+      <div class="fx-toggle">
+        <button class="btn btn-outline btn-sm active" data-scan="0" data-variant="scan">🟢 เข้างาน</button>
+        <button class="btn btn-outline btn-sm" data-scan="1" data-variant="scan">🔴 ออกงาน</button>
+        <button class="btn btn-outline btn-sm" data-scan="0" data-variant="backfill">📨 ส่งย้อนหลัง</button>
+        <button class="btn btn-outline btn-sm" data-scan="0" data-variant="remind_in">🟠 เตือนเข้า</button>
+        <button class="btn btn-outline btn-sm" data-scan="0" data-variant="remind_out">🟡 เตือนออก</button>
+      </div>
+      <div class="fx-phone"><div id="fx-preview"></div></div>
+      <div class="fx-err" id="fx-err"></div>
+      <div class="fx-note">ตัวอย่างนี้สร้างจากข้อมูลสมมติและประมาณหน้าตาเท่านั้น (ฟอนต์/เงา/ระยะอาจต่างจาก LINE เล็กน้อย)</div>
+    </div>
+  </div>
+</details>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const KEYS = ['checkin_start','checkin_end','checkin_accent','checkout_start','checkout_end','checkout_accent',
+                'reminder_in_start','reminder_in_end','reminder_in_accent',
+                'reminder_out_start','reminder_out_end','reminder_out_accent',
+                'backfill_start','backfill_end','backfill_text',
+                'angle','checkin_label','checkout_label','footer_text'];
+  let defaults = null, scanType = '0', variant = 'scan', seq = 0, timer = null;
+
+  // ── ฟอร์ม ⇄ theme ─────────────────────────────────────────
+  function fill(theme) {
+    KEYS.forEach(k => {
+      const el = $('fx-' + k);
+      el.value = theme[k];
+      const hex = $('fx-hex-' + k);
+      if (hex) hex.textContent = String(theme[k]).toUpperCase();
+    });
+    $('fx-angle-val').textContent = theme.angle;
+  }
+  function collect() {
+    const t = {};
+    KEYS.forEach(k => { t[k] = $('fx-' + k).value; });
+    t.angle = Number(t.angle);
+    return t;
+  }
+  function post(url, body) {
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body) }).then(r => r.json().then(j => ({ status: r.status, body: j })));
+  }
+  function errText(body) {
+    const e = body.errors ? Object.entries(body.errors).map(([k, v]) => k + ': ' + v).join(' · ') : '';
+    return (body.message || 'ไม่สำเร็จ') + (e ? ' — ' + e : '');
+  }
+
+  // ── renderer: Flex JSON → HTML (รองรับเฉพาะ node ที่การ์ดเราใช้) ──
+  const SIZE = { xxs: 11, xs: 13, sm: 14, md: 16, lg: 19, xl: 22, xxl: 29 };
+  const GAP  = { none: 0, xs: 2, sm: 4, md: 8, lg: 12, xl: 16, xxl: 20 };
+  const px = (v) => (typeof v === 'string' && /^\d+(\.\d+)?px$/.test(v)) ? v : null;
+  const gap = (v) => (v in GAP) ? GAP[v] : (px(v) ? parseFloat(v) : 0);
+  const flexMap = { 'flex-start': 'flex-start', 'center': 'center', 'flex-end': 'flex-end', 'space-between': 'space-between' };
+
+  function render(n, parent, index, parentSpacing) {
+    let el;
+    if (n.type === 'box') {
+      el = document.createElement('div');
+      el.style.display = 'flex';
+      el.style.flexDirection = n.layout === 'horizontal' ? 'row' : 'column';
+      el.style.minWidth = '0';
+      if (n.alignItems) el.style.alignItems = flexMap[n.alignItems] || 'stretch';
+      if (n.justifyContent) el.style.justifyContent = flexMap[n.justifyContent] || 'flex-start';
+      if (n.backgroundColor) el.style.background = n.backgroundColor;
+      if (n.background && n.background.type === 'linearGradient')
+        el.style.background = 'linear-gradient(' + n.background.angle + ',' + n.background.startColor + ',' + n.background.endColor + ')';
+      if (px(n.cornerRadius)) { el.style.borderRadius = n.cornerRadius; el.style.overflow = 'hidden'; }
+      if (px(n.width)) el.style.width = n.width;
+      if (px(n.height)) el.style.height = n.height;
+      if (px(n.paddingAll)) el.style.padding = n.paddingAll;
+      if (px(n.paddingTop)) el.style.paddingTop = n.paddingTop;
+      if (px(n.paddingBottom)) el.style.paddingBottom = n.paddingBottom;
+      if (px(n.paddingStart)) el.style.paddingLeft = n.paddingStart;
+      if (px(n.paddingEnd)) el.style.paddingRight = n.paddingEnd;
+      (n.contents || []).forEach((c, i) => el.appendChild(render(c, n, i, n.spacing)));
+    } else if (n.type === 'text') {
+      el = document.createElement('div');
+      el.textContent = n.text;                       // textContent เท่านั้น — ไม่ใช้ innerHTML
+      el.style.fontSize = (SIZE[n.size] || 14) + 'px';
+      el.style.color = n.color || '#111';
+      el.style.fontWeight = n.weight === 'bold' ? '700' : '400';
+      el.style.textAlign = n.align === 'end' ? 'right' : n.align === 'center' ? 'center' : 'left';
+      el.style.minWidth = '0';
+      el.style.lineHeight = '1.35';
+      if (n.wrap) { el.style.whiteSpace = 'normal'; el.style.wordBreak = 'break-word'; }
+      else { el.style.whiteSpace = 'nowrap'; el.style.overflow = 'hidden'; el.style.textOverflow = 'ellipsis'; }
+    } else if (n.type === 'image') {
+      el = document.createElement('div');
+      el.style.width = '100%'; el.style.height = '100%';
+      if (/^https?:\/\//i.test(n.url || '')) {
+        const img = document.createElement('img');
+        img.src = n.url; img.alt = '';
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+        el.appendChild(img);
+      }
+    } else if (n.type === 'separator') {
+      el = document.createElement('div');
+      el.style.height = '1px'; el.style.alignSelf = 'stretch'; el.style.background = n.color || '#ddd';
+    } else if (n.type === 'button') {               // ปุ่ม uri (การ์ดเตือน)
+      el = document.createElement('div');
+      el.textContent = (n.action && n.action.label) || '';
+      el.style.cssText = 'text-align:center;font-weight:700;font-size:14px;padding:9px;border-radius:8px;color:#fff;';
+      el.style.background = n.color || '#06C755';
+    } else {                                        // filler
+      el = document.createElement('div');
+      el.style.flex = '1 1 0';
+    }
+    // flex ของลูกภายใน parent (horizontal: default 1 ; vertical: default 0 = ขนาดตามเนื้อหา)
+    if (parent && n.type !== 'filler') {
+      const horizontal = parent.layout === 'horizontal';
+      const f = (n.flex !== undefined) ? n.flex : (horizontal ? 1 : 0);
+      el.style.flex = f === 0 ? '0 0 auto' : f + ' 1 0';
+    }
+    // ระยะห่างจาก sibling ก่อนหน้า: margin ของตัวเอง ถ้าไม่มีใช้ spacing ของ parent (ลูกตัวแรกไม่มี — เหมือน LINE)
+    if (parent && index > 0) {
+      const m = gap(n.margin !== undefined ? n.margin : parentSpacing);
+      if (parent.layout === 'horizontal') el.style.marginLeft = m + 'px'; else el.style.marginTop = m + 'px';
+    }
+    return el;
+  }
+  function draw(messages) {
+    const bubble = messages[0].contents;
+    const card = document.createElement('div');
+    card.style.cssText = 'width:300px;background:#fff;border-radius:17px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.25);font-family:var(--font-main);';
+    card.appendChild(render(bubble.body, null, 0));
+    $('fx-preview').replaceChildren(card);
+  }
+
+  // ── preview สด (debounce + ทิ้งผลที่มาช้ากว่าคำขอล่าสุด) ──
+  function refresh() {
+    const my = ++seq;
+    post('/api/flex-preview', { theme: collect(), scan_type: scanType, variant }).then(({ status, body }) => {
+      if (my !== seq) return;
+      if (status === 200 && body.success) { $('fx-err').textContent = ''; draw(body.messages); }
+      else { $('fx-err').textContent = errText(body); }
+    }).catch(() => { if (my === seq) $('fx-err').textContent = 'โหลดตัวอย่างไม่ได้'; });
+  }
+  function schedule() { clearTimeout(timer); timer = setTimeout(refresh, 250); }
+
+  KEYS.forEach(k => $('fx-' + k).addEventListener('input', (e) => {
+    const hex = $('fx-hex-' + k); if (hex) hex.textContent = e.target.value.toUpperCase();
+    if (k === 'angle') $('fx-angle-val').textContent = e.target.value;
+    schedule();
+  }));
+  document.querySelectorAll('.fx-toggle [data-scan]').forEach(b => b.addEventListener('click', () => {
+    scanType = b.dataset.scan; variant = b.dataset.variant;
+    document.querySelectorAll('.fx-toggle [data-scan]').forEach(x => x.classList.toggle('active', x === b));
+    refresh();
+  }));
+
+  // ── ปุ่ม ──────────────────────────────────────────────
+  $('fx-save').addEventListener('click', () => {
+    post('/api/flex-theme', collect()).then(({ body }) =>
+      showToast(body.success ? body.message : errText(body), body.success ? 'success' : 'error'));
+  });
+  $('fx-reset').addEventListener('click', () => {
+    if (!defaults) return;
+    fill(defaults); refresh();
+    showToast('คืนค่าเริ่มต้นในฟอร์มแล้ว — กด "บันทึก Theme" เพื่อใช้งานจริง', 'info');
+  });
+  const testBtn = $('fx-test');
+  if (testBtn) testBtn.addEventListener('click', () => {
+    const sel = $('fx-test-token');
+    const who = sel.options[sel.selectedIndex].text;
+    if (!confirm('ส่งการ์ดทดสอบถึง "' + who + '" จริงใช่หรือไม่?')) return;
+    testBtn.disabled = true;
+    post('/api/test-notify/' + sel.value, { theme: collect(), scan_type: scanType, variant }).then(({ body }) => {
+      showToast(body.success ? 'ส่งทดสอบแล้ว' : ('ส่งไม่สำเร็จ: ' + (body.message || body.response_raw || '')),
+                body.success ? 'success' : 'error');
+    }).finally(() => { testBtn.disabled = false; });
+  });
+
+  // ── เริ่มต้น: โหลด theme ที่บันทึกไว้ ─────────────────────
+  fetch('/api/flex-theme').then(r => r.json()).then(d => {
+    defaults = d.defaults; fill(d.theme); refresh();
+  });
+})();
+</script>

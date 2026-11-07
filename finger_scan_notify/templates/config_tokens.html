@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+{% block title %}จัดการ Token{% endblock %}
+{% block page_title %}จัดการ Token / Keys บุคลากร{% endblock %}
+{% block page_sub %}รองรับ Line Notify และ MOPH Alert{% endblock %}
+{% block topbar_actions %}
+  <button class="btn btn-primary btn-sm" onclick="openAddModal()">➕ เพิ่ม Token</button>
+{% endblock %}
+
+{% block content %}
+<!-- Summary -->
+{% set active_count   = tokens|selectattr('active','equalto',1)|list|length %}
+{% set line_count     = tokens|selectattr('provider','equalto','LINE_NOTIFY')|list|length %}
+{% set moph_count     = tokens|selectattr('provider','equalto','MOPH_ALERT')|list|length %}
+<div style="display:flex; gap:16px; margin-bottom:24px; flex-wrap:wrap;">
+  <div class="stat-card blue" style="flex:1; min-width:130px;">
+    <div class="stat-icon">🔑</div>
+    <div class="stat-value">{{ tokens|length }}</div>
+    <div class="stat-label">Token ทั้งหมด</div>
+  </div>
+  <div class="stat-card green" style="flex:1; min-width:130px;">
+    <div class="stat-icon">✅</div>
+    <div class="stat-value">{{ active_count }}</div>
+    <div class="stat-label">เปิดใช้งาน</div>
+  </div>
+  <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius);
+              padding:16px 20px; flex:1; min-width:130px; border-top:3px solid #00BA7C;">
+    <div style="font-size:24px; margin-bottom:6px;">💚</div>
+    <div style="font-size:28px; font-weight:700; font-family:var(--font-mono); color:#00BA7C;">{{ line_count }}</div>
+    <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">Line Notify</div>
+  </div>
+  <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius);
+              padding:16px 20px; flex:1; min-width:130px; border-top:3px solid #0891B2;">
+    <div style="font-size:24px; margin-bottom:6px;">🏥</div>
+    <div style="font-size:28px; font-weight:700; font-family:var(--font-mono); color:#0891B2;">{{ moph_count }}</div>
+    <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">MOPH Alert</div>
+  </div>
+</div>
+
+<!-- Provider note for MOPH Alert HTTP 200 issue -->
+<div class="alert alert-info" style="margin-bottom:20px;">
+  <div>
+    <strong>💡 หมายเหตุ MOPH Alert:</strong>
+    ถ้า HTTP 200 แต่ไม่ได้รับแจ้งเตือน — ผู้รับต้องเข้าไป <strong>Subscribe / Follow</strong> ช่องทางใน MOPH Alert App ก่อน
+    หรือลองเปลี่ยนมาใช้ <strong style="color:#00BA7C;">Line Notify</strong> ซึ่งใช้งานได้ง่ายกว่าและทำงานได้ทันที
+  </div>
+</div>
+
+<!-- Table -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">🔑 รายการ Token ทั้งหมด</div>
+    <input type="text" id="search-input" class="form-control"
+           placeholder="🔍 ค้นหาชื่อ / กลุ่มงาน..."
+           style="width:240px; padding:6px 12px; font-size:12px;" oninput="filterTable()">
+  </div>
+  <div class="table-wrap">
+    <table id="token-table">
+      <thead>
+        <tr>
+          <th>Person ID</th>
+          <th>ชื่อ-สกุล</th>
+          <th>กลุ่มงาน</th>
+          <th>Provider</th>
+          <th>Token / Key</th>
+          <th>แจ้งเตือน</th>
+          <th>สถานะ</th>
+          <th>จัดการ</th>
+        </tr>
+      </thead>
+      <tbody id="token-tbody">
+        {% for t in tokens %}
+        <tr data-id="{{ t.id }}">
+          <td><span style="font-family:var(--font-mono); font-size:13px; font-weight:700; color:var(--accent-cyan);">{{ t.person_id }}</span></td>
+          <td><div style="font-weight:600; color:var(--text-primary);">{{ t.person_name or '-' }}</div></td>
+          <td><div style="font-size:12px; color:var(--text-secondary);">{{ t.department or '-' }}</div></td>
+          <td>
+            {% if (t.provider or 'LINE_NOTIFY') == 'LINE_NOTIFY' %}
+              <span class="badge" style="background:rgba(0,186,124,0.15); color:#00BA7C; border:1px solid rgba(0,186,124,0.3);">💚 Line Notify</span>
+            {% else %}
+              <span class="badge" style="background:rgba(8,145,178,0.15); color:#0891B2; border:1px solid rgba(8,145,178,0.3);">🏥 MOPH Alert</span>
+            {% endif %}
+          </td>
+          <td>
+            {% set provider = t.provider or 'LINE_NOTIFY' %}
+            {% if provider == 'LINE_NOTIFY' %}
+              <span style="font-family:var(--font-mono); font-size:11px; color:var(--text-muted);">
+                {{ (t.line_token or t.token or '')[:18] }}...
+              </span>
+            {% else %}
+              <span style="font-family:var(--font-mono); font-size:11px; color:var(--text-muted);">
+                {{ (t.client_key or '')[:14] }}...
+              </span>
+            {% endif %}
+          </td>
+          <td>
+            <div style="display:flex; gap:5px;">
+              {% if t.notify_checkin %}<span class="badge badge-in">🟢</span>{% else %}<span class="badge" style="background:rgba(71,85,105,0.2); color:var(--text-muted); font-size:10px;">🟢ปิด</span>{% endif %}
+              {% if t.notify_checkout %}<span class="badge badge-out">🔴</span>{% else %}<span class="badge" style="background:rgba(71,85,105,0.2); color:var(--text-muted); font-size:10px;">🔴ปิด</span>{% endif %}
+            </div>
+          </td>
+          <td>
+            <label class="toggle">
+              <input type="checkbox" {{ 'checked' if t.active else '' }} onchange="toggleToken({{ t.id }}, this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+          </td>
+          <td>
+            <div style="display:flex; gap:5px;">
+              <button class="btn btn-outline btn-sm" onclick='editToken({{ t|tojson }})' title="แก้ไข">✏️</button>
+              <button class="btn btn-outline btn-sm" onclick="testNotify({{ t.id }}, '{{ t.person_name or '' }}')" title="ทดสอบ">🔔</button>
+              <button class="btn btn-outline btn-sm" style="color:var(--accent-red);"
+                      onclick="deleteToken({{ t.id }}, '{{ t.person_name or t.person_id }}')" title="ลบ">🗑️</button>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" style="text-align:center; padding:48px; color:var(--text-muted);">
+            <div style="font-size:32px; margin-bottom:12px;">🔑</div>
+            ยังไม่มีข้อมูล — กด "เพิ่ม Token" เพื่อเริ่มต้น
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="modal-backdrop" id="token-modal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title" id="modal-title">➕ เพิ่ม Token</div>
+    <input type="hidden" id="edit-id">
+
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label">Person ID <span style="color:var(--accent-red);">*</span></label>
+        <input type="number" id="f-person-id" class="form-control" placeholder="156">
+        <div class="form-hint">PERSON_ID จากตาราง fingle_scan</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">ชื่อ-สกุล</label>
+        <input type="text" id="f-person-name" class="form-control" placeholder="นายณัฐพงษ์ นิลคง">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">กลุ่มงาน / ฝ่าย</label>
+      <input type="text" id="f-department" class="form-control" placeholder="กลุ่มงานสารสนเทศ">
+    </div>
+
+    <!-- Provider selector -->
+    <div class="form-group">
+      <label class="form-label">ช่องทางการแจ้งเตือน <span style="color:var(--accent-red);">*</span></label>
+      <div style="display:flex; gap:10px;">
+        <label id="lbl-line" style="flex:1; cursor:pointer; border-radius:8px; padding:14px;
+               background:rgba(0,186,124,0.1); border:2px solid #00BA7C;">
+          <input type="radio" name="f-provider" value="LINE_NOTIFY" checked onchange="switchProvider()">
+          <div style="margin-top:8px;">
+            <div style="font-size:18px;">💚</div>
+            <div style="font-weight:700; color:#00BA7C; margin-top:4px;">Line Notify</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">แนะนำ — ใช้ Token จาก notify-bot.line.me</div>
+          </div>
+        </label>
+        <label id="lbl-moph" style="flex:1; cursor:pointer; border-radius:8px; padding:14px;
+               background:var(--bg-base); border:2px solid var(--border-light);">
+          <input type="radio" name="f-provider" value="MOPH_ALERT" onchange="switchProvider()">
+          <div style="margin-top:8px;">
+            <div style="font-size:18px;">🏥</div>
+            <div style="font-weight:700; color:var(--text-secondary); margin-top:4px;">MOPH Alert</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">client-key + secret-key</div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- LINE NOTIFY fields -->
+    <div id="fields-line">
+      <div class="form-group">
+        <label class="form-label">Line Notify Token <span style="color:var(--accent-red);">*</span></label>
+        <input type="text" id="f-line-token" class="form-control"
+               placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+               style="font-family:var(--font-mono); font-size:12px;">
+        <div class="form-hint">
+          รับ Token ได้ที่
+          <a href="https://notify-bot.line.me/my/" target="_blank" style="color:var(--accent-cyan);">notify-bot.line.me/my/</a>
+          → "Generate token"
+        </div>
+      </div>
+    </div>
+
+    <!-- MOPH ALERT fields -->
+    <div id="fields-moph" style="display:none;">
+      <div class="form-group">
+        <label class="form-label">Client Key <span style="color:var(--accent-red);">*</span></label>
+        <input type="text" id="f-client-key" class="form-control"
+               style="font-family:var(--font-mono); font-size:12px;"
+               placeholder="5f9f001dbabc7794ebbe5769a02dfc636782e1f2">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Secret Key <span style="color:var(--accent-red);">*</span></label>
+        <input type="text" id="f-secret-key" class="form-control"
+               style="font-family:var(--font-mono); font-size:12px;"
+               placeholder="YLNQE2A65PEIZQXA72JMQ7CQEDYY">
+      </div>
+    </div>
+
+    <!-- Notify settings -->
+    <div style="display:flex; gap:20px; margin-bottom:20px;">
+      <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+        <label class="toggle"><input type="checkbox" id="f-notify-checkin" checked><span class="toggle-slider"></span></label>
+        <span>🟢 เข้างาน</span>
+      </label>
+      <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+        <label class="toggle"><input type="checkbox" id="f-notify-checkout" checked><span class="toggle-slider"></span></label>
+        <span>🔴 ออกงาน</span>
+      </label>
+    </div>
+
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveToken()">💾 บันทึก</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function switchProvider() {
+  const v = document.querySelector('input[name="f-provider"]:checked').value;
+  const isLine = v === 'LINE_NOTIFY';
+  document.getElementById('fields-line').style.display = isLine ? '' : 'none';
+  document.getElementById('fields-moph').style.display = isLine ? 'none' : '';
+  document.getElementById('lbl-line').style.borderColor = isLine ? '#00BA7C' : 'var(--border-light)';
+  document.getElementById('lbl-line').style.background  = isLine ? 'rgba(0,186,124,0.1)' : 'var(--bg-base)';
+  document.getElementById('lbl-moph').style.borderColor = isLine ? 'var(--border-light)' : '#0891B2';
+  document.getElementById('lbl-moph').style.background  = isLine ? 'var(--bg-base)' : 'rgba(8,145,178,0.1)';
+  const nameEl = document.querySelector('label[for="lbl-moph"] div:nth-child(3)');
+}
+
+function openAddModal() {
+  document.getElementById('modal-title').textContent = '➕ เพิ่ม Token';
+  ['edit-id','f-person-id','f-person-name','f-department','f-line-token','f-client-key','f-secret-key']
+    .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  document.querySelector('input[name="f-provider"][value="LINE_NOTIFY"]').checked = true;
+  document.getElementById('f-notify-checkin').checked = true;
+  document.getElementById('f-notify-checkout').checked = true;
+  switchProvider();
+  document.getElementById('token-modal').classList.add('show');
+}
+
+function editToken(t) {
+  document.getElementById('modal-title').textContent = '✏️ แก้ไข Token';
+  document.getElementById('edit-id').value       = t.id;
+  document.getElementById('f-person-id').value   = t.person_id;
+  document.getElementById('f-person-name').value = t.person_name || '';
+  document.getElementById('f-department').value  = t.department  || '';
+  const provider = (t.provider || 'LINE_NOTIFY').toUpperCase();
+  document.querySelector(`input[name="f-provider"][value="${provider}"]`).checked = true;
+  document.getElementById('f-line-token').value  = t.line_token || t.token || '';
+  document.getElementById('f-client-key').value  = t.client_key || '';
+  document.getElementById('f-secret-key').value  = t.secret_key || '';
+  document.getElementById('f-notify-checkin').checked  = !!t.notify_checkin;
+  document.getElementById('f-notify-checkout').checked = !!t.notify_checkout;
+  switchProvider();
+  document.getElementById('token-modal').classList.add('show');
+}
+
+function closeModal() { document.getElementById('token-modal').classList.remove('show'); }
+
+function saveToken() {
+  const provider = document.querySelector('input[name="f-provider"]:checked').value;
+  const pid = document.getElementById('f-person-id').value.trim();
+  if (!pid) { showToast('กรุณากรอก Person ID', 'error'); return; }
+  if (provider === 'LINE_NOTIFY' && !document.getElementById('f-line-token').value.trim()) {
+    showToast('กรุณากรอก Line Notify Token', 'error'); return;
+  }
+  if (provider === 'MOPH_ALERT' && !document.getElementById('f-client-key').value.trim()) {
+    showToast('กรุณากรอก Client Key', 'error'); return;
+  }
+  fetch('/api/tokens', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      person_id:       parseInt(pid),
+      person_name:     document.getElementById('f-person-name').value.trim(),
+      provider,
+      line_token:      document.getElementById('f-line-token').value.trim(),
+      client_key:      document.getElementById('f-client-key').value.trim(),
+      secret_key:      document.getElementById('f-secret-key').value.trim(),
+      department:      document.getElementById('f-department').value.trim(),
+      notify_checkin:  document.getElementById('f-notify-checkin').checked  ? 1 : 0,
+      notify_checkout: document.getElementById('f-notify-checkout').checked ? 1 : 0
+    })
+  })
+  .then(r=>r.json())
+  .then(d=>{
+    showToast(d.message, d.success ? 'success' : 'error');
+    if (d.success) { closeModal(); setTimeout(()=>location.reload(), 800); }
+  });
+}
+
+function deleteToken(id, name) {
+  if (!confirm(`ต้องการลบ Token ของ "${name}"?`)) return;
+  fetch(`/api/tokens/${id}`, {method:'DELETE'})
+    .then(()=>{ document.querySelector(`tr[data-id="${id}"]`)?.remove(); showToast('ลบเรียบร้อย','success'); });
+}
+
+function toggleToken(id, active) {
+  fetch(`/api/tokens/${id}/toggle`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({active: active?1:0})
+  }).then(()=>showToast(active?'เปิดใช้งานแล้ว':'ปิดใช้งานแล้ว','info'));
+}
+
+function testNotify(id, name) {
+  showToast(`⏳ กำลังส่งทดสอบ...`, 'info');
+  fetch(`/api/test-notify/${id}`, {method:'POST'})
+    .then(r=>r.json())
+    .then(d=>{
+      const provider = d.provider || '';
+      if (d.success) {
+        showToast(`✅ ส่งสำเร็จ (${provider}) HTTP ${d.http_code}`, 'success');
+      } else {
+        const detail = d.response_json ? JSON.stringify(d.response_json) : (d.response_raw||'');
+        showToast(`❌ ล้มเหลว HTTP ${d.http_code}: ${detail.substring(0,80)}`, 'error');
+      }
+    });
+}
+
+function filterTable() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  document.querySelectorAll('#token-tbody tr').forEach(r=>{
+    r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+document.getElementById('token-modal').addEventListener('click', e=>{
+  if (e.target===document.getElementById('token-modal')) closeModal();
+});
+</script>
+{% endblock %}

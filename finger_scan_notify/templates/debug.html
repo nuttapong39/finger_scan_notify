@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block title %}Debug API{% endblock %}
+{% block page_title %}🔧 Debug — ทดสอบ API{% endblock %}
+{% block page_sub %}ดู Request/Response แบบ real-time — Line Notify & MOPH Alert{% endblock %}
+
+{% block content %}
+<div class="grid-2" style="align-items:start; gap:20px;">
+  <!-- LEFT -->
+  <div>
+    <!-- Quick load -->
+    {% if tokens %}
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:12px;">⚡ เลือก Token ที่บันทึกไว้</div>
+      <div style="display:flex; flex-direction:column; gap:6px; max-height:200px; overflow-y:auto;">
+        {% for t in tokens %}
+        <button class="btn btn-outline" style="justify-content:flex-start; text-align:left; gap:10px;"
+                onclick="loadToken('{{ t.provider or 'LINE_NOTIFY' }}','{{ t.line_token or t.token or '' }}','{{ t.client_key or '' }}','{{ t.secret_key or '' }}','{{ t.person_name or '' }}')">
+          <span style="font-family:var(--font-mono); color:var(--accent-cyan); min-width:36px;">{{ t.person_id }}</span>
+          <span style="flex:1;">{{ t.person_name or 'ไม่ระบุ' }}</span>
+          {% if (t.provider or 'LINE_NOTIFY') == 'LINE_NOTIFY' %}
+            <span style="font-size:10px; background:rgba(0,186,124,0.2); color:#00BA7C; padding:2px 8px; border-radius:10px;">💚 Line</span>
+          {% else %}
+            <span style="font-size:10px; background:rgba(8,145,178,0.2); color:#0891B2; padding:2px 8px; border-radius:10px;">🏥 MOPH</span>
+          {% endif %}
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Manual input -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:16px;">🔐 กรอกข้อมูลทดสอบ</div>
+
+      <!-- Provider tabs -->
+      <div style="display:flex; gap:8px; margin-bottom:16px;">
+        <button class="btn" id="tab-line"
+                style="flex:1; background:rgba(0,186,124,0.15); color:#00BA7C; border:1px solid #00BA7C;"
+                onclick="switchTab('LINE_NOTIFY')">💚 Line Notify</button>
+        <button class="btn btn-outline" id="tab-moph" style="flex:1;"
+                onclick="switchTab('MOPH_ALERT')">🏥 MOPH Alert</button>
+      </div>
+      <input type="hidden" id="d-provider" value="LINE_NOTIFY">
+
+      <!-- Line Notify fields -->
+      <div id="tab-line-fields">
+        <div class="form-group">
+          <label class="form-label">Line Notify Token</label>
+          <input type="text" id="d-line-token" class="form-control"
+                 placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                 style="font-family:var(--font-mono); font-size:12px;">
+        </div>
+      </div>
+
+      <!-- MOPH Alert fields -->
+      <div id="tab-moph-fields" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">API URL</label>
+          <input type="url" id="d-api-url" class="form-control"
+                 value="{{ api_cfg.moph_api_url or api_cfg.api_url or 'https://morpromt2f.moph.go.th/api/notify/send?messages=yes' }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client Key</label>
+          <input type="text" id="d-client-key" class="form-control"
+                 style="font-family:var(--font-mono); font-size:12px;" placeholder="5f9f001d...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Secret Key</label>
+          <input type="text" id="d-secret-key" class="form-control"
+                 style="font-family:var(--font-mono); font-size:12px;" placeholder="YLNQE2A6...">
+        </div>
+      </div>
+
+      <!-- Scan type -->
+      <div class="form-group">
+        <label class="form-label">ประเภทการแจ้งเตือน</label>
+        <div style="display:flex; gap:10px;">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; flex:1;
+                        background:var(--bg-base); border:1px solid var(--border-light); border-radius:6px; padding:10px;">
+            <input type="radio" name="scan-type" value="0" checked>
+            <span>🟢 เข้างาน</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; flex:1;
+                        background:var(--bg-base); border:1px solid var(--border-light); border-radius:6px; padding:10px;">
+            <input type="radio" name="scan-type" value="4">
+            <span>🔴 ออกงาน</span>
+          </label>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" style="width:100%;" onclick="sendTest()" id="send-btn">
+        🚀 ส่งทดสอบ
+      </button>
+    </div>
+  </div>
+
+  <!-- RIGHT: Response -->
+  <div>
+    <div id="status-bar" style="display:none; margin-bottom:16px;"></div>
+
+    <div class="card" id="response-card" style="display:none; margin-bottom:16px;">
+      <div class="card-header">
+        <div class="card-title">📡 API Response</div>
+        <div id="http-badge"></div>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; font-weight:700; margin-bottom:5px;">URL</div>
+        <div id="resp-url" style="font-family:var(--font-mono); font-size:11px; color:var(--accent-cyan);
+             word-break:break-all; background:var(--bg-base); padding:8px 12px; border-radius:6px;"></div>
+      </div>
+      <div style="margin-bottom:12px;">
+        <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; font-weight:700; margin-bottom:5px;">Headers</div>
+        <pre id="resp-headers" style="background:var(--bg-base); padding:10px; border-radius:6px;
+             font-family:var(--font-mono); font-size:11px; color:var(--accent-amber); margin:0; white-space:pre-wrap;"></pre>
+      </div>
+      <div>
+        <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; font-weight:700; margin-bottom:5px;">Response Body</div>
+        <pre id="resp-body" style="background:var(--bg-base); padding:10px; border-radius:6px;
+             font-family:var(--font-mono); font-size:11px; margin:0; white-space:pre-wrap;
+             max-height:200px; overflow-y:auto;"></pre>
+      </div>
+    </div>
+
+    <!-- Payload preview -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:10px;">📦 Payload ที่ส่ง</div>
+      <pre id="payload-preview" style="background:var(--bg-base); padding:12px; border-radius:6px;
+           font-family:var(--font-mono); font-size:10px; color:var(--accent-green);
+           max-height:300px; overflow-y:auto; white-space:pre-wrap; margin:0;">
+กด "ส่งทดสอบ" เพื่อดู...</pre>
+    </div>
+  </div>
+</div>
+
+<!-- Error guide -->
+<div class="card" style="margin-top:20px;">
+  <div class="card-title" style="margin-bottom:16px;">🔍 วิเคราะห์ผลลัพธ์</div>
+  <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px; font-size:12px;">
+    <div style="background:rgba(0,186,124,0.06); border:1px solid rgba(0,186,124,0.2); border-radius:8px; padding:14px;">
+      <div style="font-weight:700; color:#00BA7C; margin-bottom:8px;">💚 Line Notify HTTP 200</div>
+      <div style="color:var(--text-secondary); line-height:1.8;">
+        ✅ <strong>{"status":200}</strong> = สำเร็จ รับแจ้งเตือนได้เลย<br>
+        ❌ <strong>{"status":401}</strong> = Token ผิด หรือ revoke แล้ว<br>
+        ❌ <strong>{"status":400}</strong> = รูปแบบผิด
+      </div>
+    </div>
+    <div style="background:rgba(8,145,178,0.06); border:1px solid rgba(8,145,178,0.2); border-radius:8px; padding:14px;">
+      <div style="font-weight:700; color:#0891B2; margin-bottom:8px;">🏥 MOPH Alert HTTP 200</div>
+      <div style="color:var(--text-secondary); line-height:1.8;">
+        ⚠️ <strong>{"message":"Successfully"}</strong> = API รับแล้ว<br>
+        แต่ผู้รับต้อง <strong>Subscribe ใน App</strong> ก่อนถึงจะได้รับ<br>
+        ❌ 401/403 = Key ผิด
+      </div>
+    </div>
+    <div style="background:rgba(255,77,109,0.06); border:1px solid rgba(255,77,109,0.2); border-radius:8px; padding:14px;">
+      <div style="font-weight:700; color:var(--accent-red); margin-bottom:8px;">❌ Connection Error</div>
+      <div style="color:var(--text-secondary); line-height:1.8;">
+        Network ไม่ได้หรือ Firewall บล็อก<br>
+        ลองเปิด URL ใน Browser ก่อน<br>
+        ถ้า Line Notify → ต้องเข้า Internet ได้
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function switchTab(provider) {
+  document.getElementById('d-provider').value = provider;
+  const isLine = provider === 'LINE_NOTIFY';
+  document.getElementById('tab-line-fields').style.display = isLine ? '' : 'none';
+  document.getElementById('tab-moph-fields').style.display = isLine ? 'none' : '';
+  document.getElementById('tab-line').style.background = isLine ? 'rgba(0,186,124,0.15)' : '';
+  document.getElementById('tab-line').style.color = isLine ? '#00BA7C' : '';
+  document.getElementById('tab-line').style.borderColor = isLine ? '#00BA7C' : '';
+  document.getElementById('tab-moph').style.background = isLine ? '' : 'rgba(8,145,178,0.15)';
+  document.getElementById('tab-moph').style.color = isLine ? '' : '#0891B2';
+  document.getElementById('tab-moph').style.borderColor = isLine ? '' : '#0891B2';
+}
+
+function loadToken(provider, lineToken, clientKey, secretKey, name) {
+  switchTab(provider.toUpperCase());
+  document.getElementById('d-line-token').value  = lineToken;
+  document.getElementById('d-client-key').value  = clientKey;
+  document.getElementById('d-secret-key').value  = secretKey;
+  showToast(`โหลด Token ของ ${name || 'บุคลากร'} แล้ว`, 'info');
+}
+
+async function sendTest() {
+  const btn = document.getElementById('send-btn');
+  btn.disabled = true; btn.textContent = '⏳ กำลังส่ง...';
+  document.getElementById('status-bar').style.display = 'none';
+
+  const provider = document.getElementById('d-provider').value;
+  const scanType = document.querySelector('input[name="scan-type"]:checked')?.value || '0';
+
+  const payload = {
+    provider, scan_type: scanType,
+    api_url:    document.getElementById('d-api-url').value.trim(),
+    line_token: document.getElementById('d-line-token').value.trim(),
+    client_key: document.getElementById('d-client-key').value.trim(),
+    secret_key: document.getElementById('d-secret-key').value.trim()
+  };
+
+  try {
+    const r = await fetch('/api/debug-send', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+
+    if (d.error) { showToast(d.error, 'error'); btn.disabled=false; btn.textContent='🚀 ส่งทดสอบ'; return; }
+
+    // Status bar
+    const bar = document.getElementById('status-bar');
+    bar.style.display = '';
+    bar.innerHTML = d.success
+      ? `<div class="alert alert-success">✅ ส่งสำเร็จ HTTP ${d.http_code} — ${d.provider} — ตรวจสอบการแจ้งเตือนได้เลย</div>`
+      : `<div class="alert alert-error">❌ ส่งไม่สำเร็จ HTTP ${d.http_code||0} — ${d.provider}</div>`;
+
+    // Response
+    document.getElementById('response-card').style.display = '';
+    const code = d.http_code || 0;
+    const col  = code===200 ? 'var(--accent-green)' : code>=400 ? 'var(--accent-red)' : 'var(--accent-amber)';
+    document.getElementById('http-badge').innerHTML =
+      `<span style="font-family:var(--font-mono); font-size:22px; font-weight:700; color:${col};">HTTP ${code}</span>`;
+    document.getElementById('resp-url').textContent = d.url || '-';
+    if (d.headers_sent) {
+      document.getElementById('resp-headers').textContent =
+        Object.entries(d.headers_sent).map(([k,v])=>`${k}: ${v}`).join('\n');
+    }
+    const bodyEl = document.getElementById('resp-body');
+    const bodyText = d.response_json ? JSON.stringify(d.response_json,null,2) : (d.response_raw||'');
+    bodyEl.textContent = bodyText;
+    bodyEl.style.color = d.success ? 'var(--accent-green)' : 'var(--accent-red)';
+
+    if (d.payload) document.getElementById('payload-preview').textContent = d.payload;
+
+  } catch(e) { showToast('Error: '+e.message,'error'); }
+  btn.disabled = false; btn.textContent = '🚀 ส่งทดสอบ';
+}
+
+switchTab('LINE_NOTIFY');
+</script>
+{% endblock %}

@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}เตือนยังไม่สแกน{% endblock %}
+{% block page_title %}⏰ เตือนยังไม่สแกน{% endblock %}
+{% block page_sub %}ถึงเวลาที่ตั้งแล้วยังไม่พบการสแกน → ส่งการ์ดสีส้มเตือน (วันละครั้งต่อคน · ข้ามเสาร์-อาทิตย์ วันหยุดราชการ และคนที่มีใบลา){% endblock %}
+
+{% block head %}
+<style>
+.rm-grid { display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-bottom:20px; }
+@media (max-width: 1000px) { .rm-grid { grid-template-columns: 1fr; } }
+.rm-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.rm-times { display:flex; gap:12px; }
+.rm-times .form-group { flex:1; }
+.rm-people { max-height: 380px; overflow-y:auto; }
+.rm-status { font-size:12px; color:var(--text-muted); }
+.st-success { color: var(--accent-green); } .st-error { color: var(--accent-red); }
+.st-cancelled, .st-claimed { color: var(--text-muted); }
+.rm-preview div { font-size:13px; line-height:1.7; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="alert alert-info" style="margin-bottom:20px;">
+  ℹ️ ยังไม่รองรับคนเข้าเวร (เช่น พยาบาล) ที่วันหยุดไม่ตรงเสาร์-อาทิตย์ — <strong>อย่าเปิดรับการเตือนให้กลุ่มนี้</strong> จนกว่าจะเชื่อมตารางเวร (phase ถัดไป)
+  · สีของการ์ดปรับได้ที่ Dashboard → 🎨 ปรับแต่ง Flex card
+</div>
+
+<div class="rm-grid">
+  {% for kind, title, icon in [('checkin', 'เตือนยังไม่สแกนเข้างาน', '🟠'), ('checkout', 'เตือนยังไม่สแกนออกงาน', '🟡')] %}
+  {% set c = cfg[kind] %}
+  <div class="card" data-kind="{{ kind }}">
+    <div class="rm-head">
+      <div class="card-title">{{ icon }} {{ title }}</div>
+      <label class="toggle"><input type="checkbox" data-f="enabled" {{ 'checked' if c.enabled else '' }}><span class="toggle-slider"></span></label>
+    </div>
+    <div class="rm-times">
+      <div class="form-group">
+        <label class="form-label">เวลาเตือน</label>
+        <input type="time" class="form-control" data-f="remind_at" value="{{ c.remind_at }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">เตือนได้ถึง</label>
+        <input type="time" class="form-control" data-f="remind_until" value="{{ c.remind_until }}">
+      </div>
+    </div>
+    <div class="form-hint" style="margin:-8px 0 14px;">
+      {% if kind == 'checkin' %}เตือนคนที่ยังไม่มี Scan เข้างานวันนี้{% else %}เตือนคนที่สแกนเข้าแล้วแต่ยังไม่มี Scan ออกงาน (ไม่มี Scan เข้าเลย = ไม่เตือนออก){% endif %}
+      · ถ้าแอปเปิดหลังเวลาเตือนแต่ก่อน "เตือนได้ถึง" ยังเตือน
+    </div>
+    <div class="form-group">
+      <label class="form-label">ลิงก์ปุ่มบนการ์ด (https:// — เว้นว่าง = ไม่มีปุ่ม)</label>
+      <input type="url" class="form-control" data-f="button_url" value="{{ c.button_url or '' }}" placeholder="https://...">
+    </div>
+    <div class="form-group" style="margin-bottom:0;">
+      <label class="form-label">ข้อความบนปุ่ม (ไม่เกิน 20 ตัวอักษร)</label>
+      <input type="text" class="form-control" data-f="button_label" value="{{ c.button_label or '' }}" maxlength="20">
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div style="display:flex; gap:10px; align-items:center; margin-bottom:24px; flex-wrap:wrap;">
+  <button class="btn btn-primary" id="rm-save">💾 บันทึกการตั้งค่า</button>
+  <button class="btn btn-outline" id="rm-preview">👀 ถ้าเตือนตอนนี้ จะเตือนใครบ้าง</button>
+  <span class="rm-status" id="rm-loop">ตัวตรวจ: {{ 'ตรวจล่าสุด ' ~ status.last_run if status.last_run else 'ยังไม่เริ่ม (เริ่มเมื่อรันแอปด้วย python app.py)' }}{{ ' · ผิดพลาด: ' ~ status.last_error if status.last_error else '' }}</span>
+</div>
+<div class="card rm-preview" id="rm-preview-box" style="display:none; margin-bottom:24px;"></div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="rm-head">
+      <div class="card-title">ผู้รับการเตือน (เปิดเป็นรายคน)</div>
+      <span class="rm-status" id="rm-count"></span>
+    </div>
+    <input type="text" id="rm-search" class="form-control" placeholder="🔍 ค้นหาชื่อ / หน่วยงาน" style="margin-bottom:8px;">
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
+      <button class="btn btn-outline btn-sm" data-bulk="1">เปิดทั้งหมดที่แสดง</button>
+      <button class="btn btn-outline btn-sm" data-bulk="0">ปิดทั้งหมดที่แสดง</button>
+    </div>
+    <div class="table-wrap rm-people">
+      <table>
+        <thead><tr><th>ชื่อ</th><th>หน่วยงาน</th><th>รับเตือน</th></tr></thead>
+        <tbody id="rm-people">
+          {% for p in people %}
+          <tr data-q="{{ (p.name ~ ' ' ~ p.department)|lower }}">
+            <td>{{ p.name }}</td>
+            <td style="font-size:12px;">{{ p.department }}</td>
+            <td><label class="toggle"><input type="checkbox" value="{{ p.person_id }}" {{ 'checked' if p.remind_enabled else '' }}><span class="toggle-slider"></span></label></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="form-hint">ยังไม่มี token ที่เปิดใช้งาน</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="rm-head">
+      <div class="card-title">การเตือนวันนี้</div>
+      <button class="btn btn-outline btn-sm" id="rm-refresh">🔄</button>
+    </div>
+    <div class="table-wrap rm-people">
+      <table>
+        <thead><tr><th>เวลา</th><th>ชื่อ</th><th>แบบ</th><th>สถานะ</th></tr></thead>
+        <tbody id="rm-log"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const KIND = { checkin: 'เข้างาน', checkout: 'ออกงาน' };
+  const STATUS = { success: '✅ ส่งแล้ว', error: '❌ ล้มเหลว', cancelled: '↩️ ยกเลิก (สแกนแล้ว)', claimed: '⏳ กำลังส่ง' };
+  const REASON = { disabled: 'ปิดอยู่', outside_window: 'อยู่นอกช่วงเวลา', weekend: 'วันเสาร์-อาทิตย์',
+                   holiday: 'วันหยุดราชการ', error: 'ผิดพลาด (ไม่เตือน)' };
+  const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                           body: JSON.stringify(body || {}) }).then(r => r.json());
+  const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+
+  // ── ตั้งค่า ──
+  $('rm-save').addEventListener('click', () => {
+    const body = {};
+    document.querySelectorAll('[data-kind]').forEach(card => {
+      const f = (n) => card.querySelector(`[data-f=${n}]`);
+      body[card.dataset.kind] = { enabled: f('enabled').checked, remind_at: f('remind_at').value,
+        remind_until: f('remind_until').value, button_url: f('button_url').value, button_label: f('button_label').value };
+    });
+    post('/api/reminders/config', body).then(d => {
+      if (d.success) { showToast('บันทึกการตั้งค่าแล้ว', 'success'); return; }
+      const msgs = Object.entries(d.errors || {}).flatMap(([k, e]) => Object.values(e).map(v => `${KIND[k]}: ${v}`));
+      showToast((d.message || 'บันทึกไม่ได้') + (msgs.length ? ' — ' + msgs.join(' · ') : ''), 'error');
+    });
+  });
+
+  // ── dry-run ──
+  $('rm-preview').addEventListener('click', () => post('/api/reminders/preview').then(d => {
+    const box = $('rm-preview-box'); box.replaceChildren(el('div', 'ผลจำลอง (ไม่ส่งจริง ไม่สนช่วงเวลาเตือน)', 'card-title'));
+    Object.entries(d.report).forEach(([kind, r]) => {
+      if (r.status !== 'ok') { box.appendChild(el('div', `${KIND[kind]}: ไม่เตือน — ${REASON[r.status] || r.status}${r.error ? ' (' + r.error + ')' : ''}`)); return; }
+      const names = r.would_remind.map(p => r.names[p] || p);
+      box.appendChild(el('div', `${KIND[kind]}: จะเตือน ${names.length} คน${names.length ? ' — ' + names.join(', ') : ''}`));
+      box.appendChild(el('div', `ข้าม: มีใบลา ${r.excluded.leave.length} คน · ขอปิดแจ้งเตือน ${r.excluded.muted.length} คน`, 'form-hint'));
+    });
+    box.style.display = '';
+  }));
+
+  // ── ผู้รับ ──
+  const boxes = () => [...document.querySelectorAll('#rm-people input[type=checkbox]')];
+  const shown = (cb) => cb.closest('tr').style.display !== 'none';
+  const count = () => { $('rm-count').textContent = `เปิดรับ ${boxes().filter(c => c.checked).length} / ${boxes().length} คน`; };
+  function setEnabled(cbs, enabled) {
+    if (!cbs.length) return;
+    post('/api/reminders/recipients', { person_ids: cbs.map(c => Number(c.value)), enabled }).then(d => {
+      if (d.success) { cbs.forEach(c => c.checked = enabled); count(); }
+      else showToast(d.message || 'บันทึกไม่ได้', 'error');
+    });
+  }
+  $('rm-people').addEventListener('change', (e) => {
+    if (e.target.type === 'checkbox') { const v = e.target.checked; e.target.checked = !v; setEnabled([e.target], v); }
+  });
+  document.querySelectorAll('[data-bulk]').forEach(b => b.addEventListener('click', () =>
+    setEnabled(boxes().filter(shown), b.dataset.bulk === '1')));
+  $('rm-search').addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    document.querySelectorAll('#rm-people tr[data-q]').forEach(tr => { tr.style.display = !q || tr.dataset.q.includes(q) ? '' : 'none'; });
+  });
+  count();
+
+  // ── log วันนี้ ──
+  function loadLog() {
+    fetch('/api/reminders/today').then(r => r.json()).then(d => {
+      const tb = $('rm-log'); tb.replaceChildren();
+      if (!d.log.length) { const tr = el('tr'); const td = el('td', 'วันนี้ยังไม่มีการเตือน', 'form-hint'); td.colSpan = 4; tr.appendChild(td); tb.appendChild(tr); }
+      d.log.forEach(r => {
+        const tr = el('tr');
+        tr.append(el('td', (r.created_local || '').slice(11, 16)), el('td', r.person_name || r.person_id),
+                  el('td', KIND[r.kind] || r.kind), el('td', STATUS[r.status] || r.status, 'st-' + r.status));
+        if (r.status === 'error') tr.lastChild.title = `HTTP ${r.http_code} ${r.response || ''}`;
+        tb.appendChild(tr);
+      });
+      const s = d.status;
+      $('rm-loop').textContent = 'ตัวตรวจ: ' + (s.last_run ? 'ตรวจล่าสุด ' + s.last_run : 'ยังไม่เริ่ม (เริ่มเมื่อรันแอปด้วย python app.py)')
+                                 + (s.last_error ? ' · ผิดพลาด: ' + s.last_error : '');
+    });
+  }
+  $('rm-refresh').addEventListener('click', loadLog);
+  loadLog(); setInterval(loadLog, 60000);
+})();
+</script>
+{% endblock %}

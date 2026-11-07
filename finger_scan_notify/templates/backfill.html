@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+{% block title %}ตรวจสอบและส่งย้อนหลัง{% endblock %}
+{% block page_title %}🔁 ตรวจสอบและส่งย้อนหลัง{% endblock %}
+{% block page_sub %}ดูสถานะการส่งของแต่ละ Scan แล้วเลือกส่งย้อนหลัง — "ส่งสำเร็จ" = MOPH Alert รับเรื่องแล้ว (ระบบไม่รู้ว่าเปิดอ่านหรือยัง){% endblock %}
+
+{% block head %}
+<style>
+.bf-grid { display:grid; grid-template-columns: 340px minmax(0,1fr); gap:20px; align-items:start; }
+@media (max-width: 1000px) { .bf-grid { grid-template-columns: 1fr; } }
+.bf-people { max-height: 340px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:6px; }
+.bf-people label { display:flex; gap:8px; align-items:center; padding:5px 6px; border-radius:6px; font-size:13px; color:var(--text-secondary); cursor:pointer; }
+.bf-people label:hover { background: var(--bg-card-hover); }
+.bf-people small { color: var(--text-muted); margin-left:auto; font-size:11px; }
+.bf-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.bf-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+.bf-chip { font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid var(--border-light); color:var(--text-secondary); }
+.st-success { color: var(--accent-green); } .st-error { color: var(--accent-red); }
+.st-skipped { color: var(--accent-amber); } .st-never { color: var(--text-muted); }
+.bf-manual { font-size:10px; padding:1px 6px; border-radius:4px; background:rgba(139,92,246,.15); color:var(--accent-purple); margin-left:4px; }
+.bf-resend td { background: rgba(255,214,10,.06); }
+.bf-panel { border:1px solid var(--border-light); border-radius:var(--radius); padding:16px; margin-top:16px; }
+.bf-warn { color: var(--accent-red); font-weight:700; }
+.bf-progress { height:8px; border-radius:4px; background:var(--bg-base); overflow:hidden; margin:10px 0; }
+.bf-progress > div { height:100%; background:var(--accent-blue); width:0; transition:width .3s; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bf-grid">
+  <!-- ตัวกรอง -->
+  <div class="card">
+    <div class="card-title" style="margin-bottom:14px;">1 · เลือกช่วงวันที่และบุคลากร</div>
+    <div class="form-group">
+      <label class="form-label">ช่วงวันที่</label>
+      <div class="bf-row">
+        <input type="date" id="bf-from" class="form-control" value="{{ today }}" max="{{ today }}" style="flex:1;">
+        <span style="color:var(--text-muted)">ถึง</span>
+        <input type="date" id="bf-to" class="form-control" value="{{ today }}" max="{{ today }}" style="flex:1;">
+      </div>
+      <div class="bf-row" style="margin-top:8px;">
+        <button class="btn btn-outline btn-sm" data-range="0">วันนี้</button>
+        <button class="btn btn-outline btn-sm" data-range="6">7 วัน</button>
+      </div>
+      <div class="form-hint" id="bf-range-warn"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">บุคลากร (เฉพาะคนที่มี token ที่เปิดใช้งาน)</label>
+      <input type="text" id="bf-search" class="form-control" placeholder="🔍 ค้นหาชื่อ / หน่วยงาน" style="margin-bottom:8px;">
+      <div class="bf-row" style="margin-bottom:8px;">
+        <button class="btn btn-outline btn-sm" id="bf-all">เลือกทั้งหมด (ที่แสดง)</button>
+        <button class="btn btn-outline btn-sm" id="bf-none">ล้าง</button>
+        <span class="form-hint" id="bf-picked" style="margin:0;"></span>
+      </div>
+      <div class="bf-people" id="bf-people">
+        {% for p in people %}
+        <label data-q="{{ (p.name ~ ' ' ~ p.department)|lower }}">
+          <input type="checkbox" value="{{ p.person_id }}"> {{ p.name }}
+          <small>{{ p.department }}</small>
+        </label>
+        {% else %}
+        <div class="form-hint">ยังไม่มี token ที่เปิดใช้งาน</div>
+        {% endfor %}
+      </div>
+    </div>
+    <button class="btn btn-primary" id="bf-check" style="width:100%;">🔍 ตรวจสถานะ</button>
+  </div>
+
+  <!-- ผลลัพธ์ -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">2 · สถานะการส่ง และเลือกรายการที่จะส่งย้อนหลัง</div>
+    </div>
+    <div id="bf-empty" class="form-hint">เลือกช่วงวันที่และบุคลากร แล้วกด "ตรวจสถานะ"</div>
+    <div id="bf-result" style="display:none;">
+      <div class="bf-summary" id="bf-summary"></div>
+      <div class="form-hint" style="margin-bottom:10px;">
+        ติ๊กให้อัตโนมัติ: ⚪ ไม่เคยส่ง และ ❌ ล้มเหลว · ✅ ส่งสำเร็จแล้ว ติ๊กเองได้ (= ส่งซ้ำ) ·
+        <span class="bf-manual">บันทึกจากคำร้อง</span> = Scan จากคำร้องลืมสแกน ไม่ติ๊กให้อัตโนมัติ
+      </div>
+      <div class="table-wrap" style="max-height:480px; overflow-y:auto;">
+        <table>
+          <thead><tr>
+            <th><input type="checkbox" id="bf-check-all" title="เลือกทั้งหมดที่ส่งได้"></th>
+            <th>เวลาสแกน</th><th>ชื่อ</th><th>ประเภท</th><th>สถานะการส่ง</th>
+          </tr></thead>
+          <tbody id="bf-tbody"></tbody>
+        </table>
+      </div>
+      <div class="bf-row" style="margin-top:14px;">
+        <button class="btn btn-amber" id="bf-preview">📋 ดูสรุปก่อนส่ง</button>
+        <span class="form-hint" id="bf-selected" style="margin:0;"></span>
+      </div>
+
+      <div class="bf-panel" id="bf-confirm" style="display:none;">
+        <div class="card-title" style="margin-bottom:10px;">3 · ยืนยันการส่งย้อนหลัง</div>
+        <div id="bf-confirm-body" style="font-size:14px; line-height:1.8;"></div>
+        <div id="bf-typed" style="display:none; margin-top:10px;">
+          <label class="form-label bf-warn">ช่วงวันที่เกิน {{ confirm_days }} วัน — พิมพ์ "{{ confirm_text }}" เพื่อยืนยัน</label>
+          <input type="text" id="bf-typed-input" class="form-control" autocomplete="off">
+        </div>
+        <div class="bf-row" style="margin-top:12px;">
+          <button class="btn btn-danger" id="bf-send">📨 ยืนยันส่ง</button>
+          <button class="btn btn-outline" id="bf-cancel-confirm">ยกเลิก</button>
+        </div>
+      </div>
+
+      <div class="bf-panel" id="bf-job" style="display:none;">
+        <div class="card-title">กำลังส่งย้อนหลัง</div>
+        <div class="bf-progress"><div id="bf-bar"></div></div>
+        <div id="bf-job-text" style="font-size:13px;"></div>
+        <button class="btn btn-outline btn-sm" id="bf-stop" style="margin-top:8px;">⏹ หยุด</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const MAX = {{ max_per_job }};
+  const CONFIRM_DAYS = {{ confirm_days }};
+  const ST = { success: ['✅', 'ส่งสำเร็จ'], error: ['❌', 'ล้มเหลว'], skipped: ['⏭️', 'ถูกข้าม'], never: ['⚪', 'ไม่เคยส่ง'] };
+  const SRC = { live: 'แจ้งเตือนสด', backfill: 'ส่งย้อนหลัง', test: 'ทดสอบ' };
+  let rows = [], lastQuery = null, jobTimer = null;
+
+  function post(url, body) {
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(r => r.json().then(j => ({ status: r.status, body: j })));
+  }
+  function el(tag, text, cls) {
+    const e = document.createElement(tag);
+    if (text !== undefined && text !== null) e.textContent = text;
+    if (cls) e.className = cls;
+    return e;
+  }
+  const isoDaysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+
+  // ── ช่วงวันที่ ──
+  function rangeWarn() {
+    const limit = isoDaysAgo(CONFIRM_DAYS);
+    $('bf-range-warn').textContent = $('bf-from').value && $('bf-from').value < limit
+      ? `⚠️ เกิน ${CONFIRM_DAYS} วัน — ตอนส่งต้องพิมพ์ยืนยัน` : '';
+    $('bf-range-warn').className = 'form-hint' + ($('bf-range-warn').textContent ? ' bf-warn' : '');
+  }
+  document.querySelectorAll('[data-range]').forEach(b => b.addEventListener('click', () => {
+    $('bf-from').value = isoDaysAgo(Number(b.dataset.range)); $('bf-to').value = isoDaysAgo(0); rangeWarn();
+  }));
+  $('bf-from').addEventListener('change', rangeWarn);
+
+  // ── เลือกบุคลากร ──
+  const personBoxes = () => [...document.querySelectorAll('#bf-people input[type=checkbox]')];
+  const visible = (cb) => cb.closest('label').style.display !== 'none';
+  function pickedText() { $('bf-picked').textContent = `เลือก ${personBoxes().filter(c => c.checked).length} คน`; }
+  $('bf-search').addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    document.querySelectorAll('#bf-people label').forEach(l => { l.style.display = !q || l.dataset.q.includes(q) ? '' : 'none'; });
+  });
+  $('bf-all').addEventListener('click', () => { personBoxes().filter(visible).forEach(c => c.checked = true); pickedText(); });
+  $('bf-none').addEventListener('click', () => { personBoxes().forEach(c => c.checked = false); pickedText(); });
+  $('bf-people').addEventListener('change', pickedText);
+  pickedText();
+
+  // ── ตรวจสถานะ ──
+  function check() {
+    const person_ids = personBoxes().filter(c => c.checked).map(c => Number(c.value));
+    lastQuery = { date_from: $('bf-from').value, date_to: $('bf-to').value, person_ids };
+    $('bf-check').disabled = true;
+    post('/api/backfill/status', lastQuery).then(({ body }) => {
+      if (!body.success) { showToast(body.message, 'error'); return; }
+      rows = body.rows; render();
+      if (body.truncated) showToast('ผลลัพธ์มากเกินไป แสดงเฉพาะส่วนแรก — แคบช่วงวันที่ลง', 'error');
+    }).finally(() => { $('bf-check').disabled = false; });
+  }
+  $('bf-check').addEventListener('click', check);
+
+  const sendable = (r) => r.has_token && r.direction;
+  function render() {
+    $('bf-empty').style.display = rows.length ? 'none' : '';
+    $('bf-empty').textContent = rows.length ? '' : 'ไม่พบ Scan ในช่วงวันที่นี้';
+    $('bf-result').style.display = rows.length ? '' : 'none';
+    $('bf-confirm').style.display = 'none';
+    const counts = {};
+    rows.forEach(r => counts[r.status] = (counts[r.status] || 0) + 1);
+    $('bf-summary').replaceChildren(el('span', `ทั้งหมด ${rows.length} รายการ`, 'bf-chip'),
+      ...Object.keys(ST).filter(k => counts[k]).map(k => el('span', `${ST[k][0]} ${ST[k][1]} ${counts[k]}`, 'bf-chip st-' + k)));
+    const tb = $('bf-tbody'); tb.replaceChildren();
+    rows.forEach((r, i) => {
+      const tr = document.createElement('tr');
+      const cb = el('input'); cb.type = 'checkbox'; cb.dataset.i = i;
+      cb.checked = r.default_checked; cb.disabled = !sendable(r);
+      cb.title = !r.has_token ? 'ไม่มี token' : !r.direction ? 'ไม่ทราบประเภทการสแกน' : '';
+      const c0 = el('td'); c0.appendChild(cb);
+      const c2 = el('td'); c2.appendChild(el('div', r.name || '-', '')).style.fontWeight = '600';
+      c2.appendChild(el('div', r.department, '')).style.fontSize = '11px';
+      const c3 = el('td');
+      c3.appendChild(el('span', r.direction === 'in' ? '🟢 ' + r.label : r.direction === 'out' ? '🔴 ' + r.label : '📍 ' + r.label,
+                        'badge ' + (r.direction === 'in' ? 'badge-in' : r.direction === 'out' ? 'badge-out' : 'badge-other')));
+      if (r.manual) c3.appendChild(el('span', 'บันทึกจากคำร้อง', 'bf-manual'));
+      const c4 = el('td');
+      c4.appendChild(el('div', `${ST[r.status][0]} ${ST[r.status][1]}`, 'st-' + r.status)).style.fontWeight = '600';
+      const meta = [r.source ? SRC[r.source] || r.source : '', r.at ? `บันทึก ${r.at}` : '', r.detail].filter(Boolean).join(' · ');
+      if (meta) c4.appendChild(el('div', meta)).style.fontSize = '11px';
+      const c1 = el('td', r.datetime); c1.style.fontFamily = 'var(--font-mono)'; c1.style.whiteSpace = 'nowrap';
+      tr.append(c0, c1, c2, c3, c4);
+      tb.appendChild(tr);
+    });
+    selectedText();
+  }
+  function selected() {
+    return [...document.querySelectorAll('#bf-tbody input:checked')].map(c => rows[Number(c.dataset.i)]);
+  }
+  function selectedText() {
+    const s = selected(), resend = s.filter(r => r.status === 'success').length;
+    $('bf-selected').textContent = `เลือก ${s.length} รายการ` + (resend ? ` · ส่งซ้ำ ${resend}` : '');
+    document.querySelectorAll('#bf-tbody tr').forEach((tr, i) =>
+      tr.classList.toggle('bf-resend', rows[i].status === 'success' && tr.querySelector('input').checked));
+  }
+  $('bf-tbody').addEventListener('change', selectedText);
+  $('bf-check-all').addEventListener('change', (e) => {
+    document.querySelectorAll('#bf-tbody input:not(:disabled)').forEach(c => {
+      const r = rows[Number(c.dataset.i)];
+      c.checked = e.target.checked && r.status !== 'success' && !r.manual;
+    });
+    selectedText();
+  });
+
+  // ── สรุปก่อนส่ง ──
+  function jobBody() {
+    const s = selected();
+    return { date_from: lastQuery.date_from, date_to: lastQuery.date_to, scan_ids: s.map(r => r.id),
+             resend_ids: s.filter(r => r.status === 'success').map(r => r.id) };
+  }
+  $('bf-preview').addEventListener('click', () => {
+    if (!selected().length) { showToast('ยังไม่ได้เลือกรายการ', 'error'); return; }
+    post('/api/backfill/preview', jobBody()).then(({ body }) => {
+      if (!body.success) { showToast(body.message, 'error'); return; }
+      const box = $('bf-confirm-body'); box.replaceChildren();
+      box.appendChild(el('div', `จะส่ง ${body.messages} ข้อความ ถึง ${body.persons} คน` + (body.resend ? ` (ส่งซ้ำ ${body.resend})` : '')))
+         .style.fontWeight = '700';
+      Object.entries(body.excluded_th || {}).forEach(([k, v]) => box.appendChild(el('div', `ไม่ส่ง: ${k} ${v} รายการ`)));
+      if (body.over_cap) box.appendChild(el('div', `⚠️ เกินเพดาน ${body.max} ข้อความต่อครั้ง — ลดรายการที่เลือกก่อน`, 'bf-warn'));
+      box.appendChild(el('div', 'ผู้รับจะเห็นการ์ดหัวเทา พร้อมข้อความ "📨 ส่งย้อนหลัง · ส่งเมื่อ …" สีแดง', 'form-hint'));
+      $('bf-typed').style.display = body.needs_confirm ? '' : 'none';
+      $('bf-typed-input').value = '';
+      $('bf-send').disabled = !body.messages || body.over_cap;
+      $('bf-confirm').style.display = '';
+    });
+  });
+  $('bf-cancel-confirm').addEventListener('click', () => { $('bf-confirm').style.display = 'none'; });
+
+  // ── ส่งจริง + ติดตามความคืบหน้า ──
+  $('bf-send').addEventListener('click', () => {
+    $('bf-send').disabled = true;
+    post('/api/backfill/jobs', { ...jobBody(), confirm_text: $('bf-typed-input').value }).then(({ body }) => {
+      if (!body.success) { showToast(body.message, 'error'); $('bf-send').disabled = false; return; }
+      $('bf-confirm').style.display = 'none'; $('bf-job').style.display = '';
+      watch(body.job_id);
+    });
+  });
+  function watch(id) {
+    $('bf-stop').onclick = () => post(`/api/backfill/jobs/${id}/cancel`, {}).then(({ body }) => showToast(body.message, 'info'));
+    clearInterval(jobTimer);
+    jobTimer = setInterval(() => fetch(`/api/backfill/jobs/${id}`).then(r => r.json()).then(({ job }) => {
+      const done = job.sent + job.failed + job.skipped;
+      $('bf-bar').style.width = (job.total ? done / job.total * 100 : 100) + '%';
+      $('bf-job-text').textContent = `ส่งแล้ว ${job.sent} · ล้มเหลว ${job.failed} · ข้าม (ส่งไปแล้วระหว่างรอ) ${job.skipped} · จาก ${job.total}`;
+      if (job.status !== 'running') {
+        clearInterval(jobTimer);
+        const msg = { done: 'ส่งย้อนหลังเสร็จแล้ว', cancelled: 'หยุดการส่งแล้ว', error: 'เกิดข้อผิดพลาด: ' + (job.message || '') }[job.status];
+        showToast(msg, job.status === 'done' ? 'success' : 'error');
+        $('bf-stop').style.display = 'none';
+        check();
+      }
+    }), 1000);
+    $('bf-stop').style.display = '';
+  }
+})();
+</script>
+{% endblock %}
