@@ -1,15 +1,13 @@
 import pytest
 
-import app as app_module
 import database
 import notifier
 from flex_theme import DEFAULT_THEME
 
 
 @pytest.fixture
-def client(tmp_db):
-    app_module.app.config['TESTING'] = True
-    return app_module.app.test_client()
+def client(admin_client):
+    return admin_client
 
 
 def header_bg(msg):

@@ -3,7 +3,6 @@ from datetime import datetime
 
 import pytest
 
-import app as app_module
 import backfill
 import database
 import hosoffice
@@ -26,7 +25,7 @@ SCANS = {1: scan(1), 2: scan(2, code='1'), 3: scan(3, pid=8)}
 
 
 @pytest.fixture
-def client(tmp_db, monkeypatch):
+def client(admin_client, monkeypatch):
     database.save_token(7, 'คน7', 'MOPH_ALERT', '', 'ck-SECRET', 'sk-SECRET', 'งาน', 1, 1)
     database.save_token(8, 'คน8', 'MOPH_ALERT', '', 'ck', 'sk', '', 1, 1)
     monkeypatch.setattr(hosoffice, 'get_scans_between',
@@ -36,8 +35,7 @@ def client(tmp_db, monkeypatch):
     monkeypatch.setattr(backfill, 'THROTTLE_SECONDS', 0)
     sent = []
     monkeypatch.setattr(notifier.requests, 'post', lambda url, **kw: sent.append(kw['data']) or Resp())
-    app_module.app.config['TESTING'] = True
-    c = app_module.app.test_client()
+    c = admin_client
     c.sent = sent
     return c
 

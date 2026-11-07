@@ -179,7 +179,9 @@ def test_hosoffice_down_raises_without_sending(env, monkeypatch):
 
 def test_job_left_running_by_crash_is_closed_on_startup(env):
     stuck = database.create_backfill_job('2026-11-06', '2026-11-06', 5)     # แอปดับระหว่างส่ง
-    database.init_db()                                                     # เปิดแอปใหม่
+    database.init_db()                                                     # manage.py / init_db ไม่แตะ job
+    assert database.get_backfill_job(stuck)['status'] == 'running'
+    assert database.close_stuck_backfill_jobs() == 1                       # เปิดแอปใหม่ (startup)
     job = database.get_backfill_job(stuck)
     assert job['status'] == 'error' and job['finished_at']
     assert database.get_running_backfill_job() is None

@@ -9,6 +9,7 @@ import mysql.connector
 from mysql.connector import Error
 
 import scan_types
+import settings
 from database import get_db_config
 
 SCAN_COLS = ("ID,PERSON_ID,SCAN_DATE_TIME,HR_FULLNAME,HR_POSITION_NAME,HR_DEP_NAME,HR_DEP_SUB_NAME,"
@@ -21,29 +22,60 @@ class HosofficeUnavailable(RuntimeError):
     """ต่อ hosoffice ไม่ได้ / query ล้มเหลว"""
 
 
-def get_mysql_connection():
+READ_ONLY_SQL = 'SET SESSION TRANSACTION READ ONLY'
+
+
+def connection_params():
+    """ค่าเชื่อมต่อ: .env (HOSOFFICE_*) ก่อน — ไม่มีค่อยใช้หน้าตั้งค่าใน SQLite (เครื่องพัฒนา)"""
+    if settings.current.hosoffice:
+        return dict(settings.current.hosoffice)
     cfg = get_db_config()
     if not cfg:
         return None
+    return {'host': cfg['host'], 'port': int(cfg['port']), 'user': cfg['username'],
+            'password': cfg['password'], 'database': cfg['database_name']}
+
+
+def connect_readonly(params, raise_errors=False):
+    """เปิด connection แล้วบังคับ READ ONLY ก่อนคำสั่งแรก — ตั้งไม่ได้ = ไม่ใช้ connection นั้น (fail closed)
+    ด่านที่สองต่อจากสิทธิ์ของบัญชี: บัญชีปัจจุบันยังเป็น root (ดู docs/design/phase3-deploy-almalinux.md)"""
+    if not params:
+        return None
+    conn = None
     try:
-        return mysql.connector.connect(
-            host=cfg['host'], port=int(cfg['port']),
-            user=cfg['username'], password=cfg['password'],
-            database=cfg['database_name'],
+        conn = mysql.connector.connect(
+            host=params['host'], port=int(params['port']), user=params['user'],
+            password=params['password'], database=params['database'],
             connection_timeout=10, charset='utf8mb4')
+        cur = conn.cursor()
+        cur.execute(READ_ONLY_SQL)
+        cur.close()
+        return conn
     except Error:
+        if conn is not None:
+            conn.close()
+        if raise_errors:
+            raise
         return None
 
 
-def test_mysql_connection(host, port, username, password, database_name):
+def get_mysql_connection():
+    return connect_readonly(connection_params())
+
+
+def test_mysql_connection(params=None):
+    """ปุ่มทดสอบในหน้าตั้งค่า — params None = ค่าที่ระบบใช้อยู่"""
     try:
-        c = mysql.connector.connect(host=host, port=int(port), user=username,
-                                    password=password, database=database_name,
-                                    connection_timeout=10, charset='utf8mb4')
+        c = connect_readonly(params or connection_params(), raise_errors=True)
+        if c is None:
+            return False, 'ยังไม่ได้ตั้งค่าการเชื่อมต่อ'
         c.close()
-        return True, "เชื่อมต่อสำเร็จ ✅"
+        return True, "เชื่อมต่อสำเร็จ ✅ (READ ONLY)"
     except Error as e:
         return False, str(e)
+
+
+test_mysql_connection.__test__ = False      # ไม่ใช่ test ของ pytest
 
 
 def _tbl():

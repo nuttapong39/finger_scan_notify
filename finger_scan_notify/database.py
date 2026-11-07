@@ -1,6 +1,8 @@
 import json
 import sqlite3
 import os
+
+import settings
 from flex_theme import merge_theme
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'data', 'app_config.db')
@@ -202,12 +204,31 @@ def init_db():
     # logo เดิมเป็นรูปตัวอย่างของหมอพร้อม → เปลี่ยนเป็นตรา รพ. (logo_ck.png บนเว็บ รพ.) ; URL ที่ admin ตั้งเองไม่แตะ
     c.execute("UPDATE api_config SET hospital_logo=? WHERE hospital_logo=? OR TRIM(COALESCE(hospital_logo,''))=''",
               (HOSPITAL_LOGO_URL, OLD_PLACEHOLDER_LOGO))
-    # job ที่ค้าง 'running' จากการปิดแอปกลางคัน จะบล็อกการส่งย้อนหลังครั้งถัดไป → ปิดสถานะตอนเริ่มแอป
-    c.execute("UPDATE backfill_jobs SET status='error', message='แอปถูกปิดระหว่างส่ง (ตรวจสถานะแล้วส่งรายการที่เหลือใหม่)', "
-              "finished_at=CURRENT_TIMESTAMP WHERE status='running'")
-
+    # ── ล็อกอิน Admin (บัญชีเดียว, hash เท่านั้น) และตัวนับรหัสผิดต่อ IP ──
+    c.execute("""CREATE TABLE IF NOT EXISTS admin_account (
+        id INTEGER PRIMARY KEY CHECK (id = 1), username TEXT NOT NULL, password_hash TEXT NOT NULL,
+        must_change INTEGER NOT NULL DEFAULT 1, session_version INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS login_attempts (
+        ip TEXT PRIMARY KEY, failures INTEGER NOT NULL DEFAULT 0, locked_until REAL NOT NULL DEFAULT 0
+    )""")
+    # มีค่าเชื่อมต่อ hosoffice ใน .env แล้ว → ไม่เก็บรหัส MySQL ซ้ำใน SQLite (ไฟล์นี้ถูกคัดลอก/สำรองไปที่อื่น)
+    if settings.current.hosoffice:
+        c.execute("UPDATE db_config SET password='' WHERE COALESCE(password,'') <> ''")
     conn.commit()
     conn.close()
+
+
+def close_stuck_backfill_jobs():
+    """เรียกตอนแอป (process หลัก) เริ่มเท่านั้น — job ที่ค้าง 'running' จากการปิดแอปกลางคันจะบล็อก
+    การส่งย้อนหลังครั้งถัดไป ห้ามเรียกจาก init_db หรือ manage.py เพราะจะไปปิด job ที่กำลังรันจริงในแอป"""
+    conn = get_sqlite_conn()
+    n = conn.execute("UPDATE backfill_jobs SET status='error', "
+                     "message='แอปถูกปิดระหว่างส่ง (ตรวจสถานะแล้วส่งรายการที่เหลือใหม่)', "
+                     "finished_at=CURRENT_TIMESTAMP WHERE status='running'").rowcount
+    conn.commit(); conn.close()
+    return n
 
 # ── SQLite helpers ────────────────────────────────────────────
 def get_sqlite_conn():
@@ -231,6 +252,13 @@ def save_db_config(host, port, username, password, database_name, table_name, po
     conn.commit(); conn.close()
 
 # ── API Config ────────────────────────────────────────────────
+def save_db_settings(table_name, poll_interval):
+    """เฉพาะค่าที่ไม่ใช่ความลับ — ใช้เมื่อค่าการเชื่อมต่ออยู่ใน .env"""
+    conn = get_sqlite_conn()
+    conn.execute("UPDATE db_config SET table_name=?, poll_interval=?, updated_at=CURRENT_TIMESTAMP WHERE id=1",
+                 (table_name, int(poll_interval)))
+    conn.commit(); conn.close()
+
 def get_api_config():
     conn = get_sqlite_conn()
     row = conn.execute("SELECT * FROM api_config WHERE id=1").fetchone()

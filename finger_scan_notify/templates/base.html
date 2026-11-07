@@ -451,6 +451,12 @@ tr:hover td { background: var(--bg-card-hover); }
   box-shadow: 0 20px 60px rgba(0,0,0,0.6);
 }
 .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+.sidebar-logout {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 0; border-radius: 6px;
+  background: none; color: var(--text-secondary); font: inherit; font-size: 13.5px; cursor: pointer; text-align: left;
+}
+.sidebar-logout:hover { background: var(--bg-card); color: var(--accent-red); }
+.sidebar-logout .icon { width: 18px; text-align: center; }
 
 /* ── Toast ── */
 #toast-container {
@@ -527,6 +533,18 @@ tr:hover td { background: var(--bg-card-hover); }
       </nav>
     </div>
 
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">บัญชี · {{ admin_user or '' }}</div>
+      <nav class="sidebar-nav">
+        <a href="/account/password" class="{{ 'active' if request.endpoint == 'auth.change_password' else '' }}">
+          <span class="icon">🔐</span> เปลี่ยนรหัสผ่าน
+        </a>
+        <form method="POST" action="/logout" style="margin:0;">
+          <button type="submit" class="sidebar-logout"><span class="icon">🚪</span> ออกจากระบบ</button>
+        </form>
+      </nav>
+    </div>
+
     <!-- Monitor status -->
     <div class="monitor-badge" id="sidebar-monitor">
       <div class="label">Monitor Status</div>
@@ -555,6 +573,10 @@ tr:hover td { background: var(--bg-card-hover); }
     </div>
     
     <div class="content">
+      <div class="alert alert-error" id="not-primary-banner" role="alert" style="display:none;">
+        🚨 Monitor กำลังทำงานบนเครื่องที่ไม่ใช่เครื่องหลัก (ไม่ได้ตั้ง MONITOR_AUTOSTART=1) —
+        ถ้า Server ทำงานอยู่ด้วย บุคลากรจะได้แจ้งเตือนซ้ำ 2 ครั้ง กดหยุด Monitor ที่ Dashboard ถ้าไม่ได้ตั้งใจ
+      </div>
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% for cat, msg in messages %}
           <div class="alert alert-{{ 'success' if cat == 'success' else 'error' }}">
@@ -567,10 +589,53 @@ tr:hover td { background: var(--bg-card-hover); }
   </div>
 </div>
 
+{% if must_change_password %}
+<!-- บังคับเปลี่ยนรหัสชั่วคราว: ปิดไม่ได้ (ไม่มีปุ่มปิด, คลิกนอกกรอบไม่ปิด, Esc ไม่ปิด) — Server ก็บล็อกทุก API อยู่แล้ว -->
+<div class="modal-backdrop show" id="force-password-modal" role="dialog" aria-modal="true" aria-labelledby="fpm-title">
+  <div class="modal">
+    <div class="modal-title" id="fpm-title">🔐 เปลี่ยนรหัสผ่านก่อนใช้งาน</div>
+    <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px; line-height:1.7;">
+      คุณเข้าสู่ระบบด้วยรหัสชั่วคราว ต้องตั้งรหัสใหม่ก่อนจึงจะใช้งานได้
+    </p>
+    {% include "_password_form.html" %}
+    <form method="POST" action="/logout" style="margin-top:10px;">
+      <button type="submit" class="btn btn-outline">🚪 ออกจากระบบ</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <!-- Toast container -->
 <div id="toast-container"></div>
 
 <script>
+// session หมดอายุ / ถูกออกจากระบบ ระหว่างใช้งาน → กลับหน้า login แทนที่จะพังเงียบ ๆ
+(function () {
+  const orig = window.fetch.bind(window);
+  window.fetch = (...args) => orig(...args).then(r => {
+    if (r.status === 401) location.href = '/login?next=' + encodeURIComponent(location.pathname);
+    return r;
+  });
+})();
+
+function submitPasswordForm(ev) {
+  ev.preventDefault();
+  const f = ev.target, msg = f.querySelector('.password-msg'), btn = f.querySelector('button[type=submit]');
+  const body = { current: f.current.value, new: f.new.value, confirm: f.confirm.value };
+  btn.disabled = true;
+  fetch('/account/password', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                               body: JSON.stringify(body) })
+    .then(r => r.json())
+    .then(d => {
+      msg.style.display = 'block';
+      msg.className = 'password-msg alert ' + (d.success ? 'alert-success' : 'alert-error');
+      msg.textContent = (d.success ? '✅ ' : '❌ ') + d.message;
+      if (d.success) { f.reset(); if (document.getElementById('force-password-modal')) setTimeout(() => location.reload(), 800); }
+    })
+    .catch(() => { msg.style.display = 'block'; msg.className = 'password-msg alert alert-error'; msg.textContent = '❌ เชื่อมต่อไม่ได้'; })
+    .finally(() => { btn.disabled = false; });
+  return false;
+}
 function showToast(msg, type='info') {
   const t = document.createElement('div');
   t.className = `toast toast-${type}`;
@@ -586,6 +651,7 @@ function updateSidebarMonitor() {
     .then(d => {
       const dot = document.getElementById('sidebar-dot');
       const txt = document.getElementById('sidebar-status-text');
+      document.getElementById('not-primary-banner').style.display = (d.running && d.primary === false) ? 'flex' : 'none';
       if (d.running) {
         dot.classList.add('running');
         txt.textContent = 'กำลังทำงาน';

@@ -5,20 +5,23 @@ from datetime import datetime, timedelta
 import requests as _req
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from database import (
-    init_db, get_db_config, save_db_config, get_api_config, save_api_config,
+    init_db, get_db_config, save_db_config, save_db_settings, get_api_config, save_api_config,
     get_all_tokens, save_token, delete_token, toggle_token,
     get_last_scan_id, update_last_scan_id,
     get_notify_logs, get_token_by_person_id,
     advance_last_scan_id, was_notified, count_recent_notified,
     add_guard_event, get_guard_events, save_guard_settings,
-    get_flex_theme, save_flex_theme, get_sqlite_conn, add_scan_skips, get_reminder_config
+    get_flex_theme, save_flex_theme, get_sqlite_conn, add_scan_skips, get_reminder_config,
+    close_stuck_backfill_jobs
 )
 from hosoffice import (
     get_recent_scans_from_mysql, get_today_stats, get_new_scans_from_mysql,
     get_max_scan_id, test_mysql_connection, get_muted_person_ids
 )
+import auth
 import reminders
 import scan_types
+import settings
 from cards import THAI_DAYS, build_flex_message, build_backfill_card, build_reminder_card, build_line_message
 from delivery import deliver_scan, deliver_reminder, scan_skip_reason
 from flex_theme import DEFAULT_THEME, validate_theme
@@ -26,7 +29,7 @@ from notifier import LINE_NOTIFY_URL
 from routes_phase2 import bp as phase2_bp
 
 app = Flask(__name__)
-app.secret_key = 'ckhospital-fingle-notify-2025'
+auth.install(app, settings.current.secret_key)     # ทุก route ต้องล็อกอิน (ยกเว้น /login)
 app.register_blueprint(phase2_bp)
 
 # ── Monitor state ─────────────────────────────────────────────
@@ -259,21 +262,35 @@ def api_dashboard_data():
 # ── Config DB ─────────────────────────────────────────────────
 @app.route('/config/database', methods=['GET','POST'])
 def config_database():
+    """ค่าการเชื่อมต่อ: ถ้าอยู่ใน .env แก้ที่นี่ไม่ได้ (Q6) · รหัสผ่านไม่ถูกส่งออกไปที่ browser เลย (ช่องว่าง = ใช้รหัสเดิม)"""
+    env_conn = settings.current.hosoffice
+    cur = get_db_config()
+    f = request.form
     if request.method == 'POST':
-        host = request.form.get('host','').strip()
-        port = request.form.get('port','3306').strip()
-        user = request.form.get('username','').strip()
-        pw   = request.form.get('password','')
-        db   = request.form.get('database_name','').strip()
-        tbl  = request.form.get('table_name','fingle_scan').strip()
-        itv  = request.form.get('poll_interval','30').strip()
-        if 'test' in request.form:
-            ok, msg = test_mysql_connection(host, port, user, pw, db)
-            return jsonify({'success': ok, 'message': msg})
-        save_db_config(host, port, user, pw, db, tbl, itv)
+        tbl = f.get('table_name', '').strip() or 'fingle_scan'
+        try:
+            itv = max(10, min(3600, int(f.get('poll_interval') or 10)))
+        except ValueError:
+            itv = 10
+        if env_conn:
+            if 'test' in f:
+                ok, msg = test_mysql_connection()
+                return jsonify({'success': ok, 'message': msg})
+            save_db_settings(tbl, itv)
+        else:
+            host, user, db = f.get('host','').strip(), f.get('username','').strip(), f.get('database_name','').strip()
+            port = f.get('port','3306').strip() or '3306'
+            pw = f.get('password') or cur.get('password', '')
+            if 'test' in f:
+                ok, msg = test_mysql_connection({'host': host, 'port': port, 'user': user,
+                                                 'password': pw, 'database': db})
+                return jsonify({'success': ok, 'message': msg})
+            save_db_config(host, port, user, pw, db, tbl, itv)
         flash('บันทึกการตั้งค่าฐานข้อมูลเรียบร้อย', 'success')
         return redirect(url_for('config_database'))
-    return render_template('config_database.html', cfg=get_db_config())
+    cfg = {k: v for k, v in cur.items() if k != 'password'}
+    return render_template('config_database.html', cfg=cfg, env_conn=env_conn,
+                           has_password=bool(cur.get('password')))
 
 # ── Config API ────────────────────────────────────────────────
 @app.route('/config/api', methods=['GET','POST'])
@@ -520,7 +537,9 @@ def monitor_set_last_id():
 
 @app.route('/monitor/status')
 def monitor_status_api():
-    return jsonify({**monitor_status, 'last_scan_id': get_last_scan_id()})
+    # primary=False + running=True → หน้าเว็บแสดงแถบแดง: เครื่องนี้ไม่ใช่เครื่องหลัก อาจส่งซ้ำกับ Server (ADR 0001)
+    return jsonify({**monitor_status, 'last_scan_id': get_last_scan_id(),
+                    'primary': settings.current.monitor_autostart})
 
 # ── Guard settings / events ───────────────────────────────────
 @app.route('/api/guard-settings', methods=['GET','POST'])
@@ -553,19 +572,31 @@ def logs():
 def api_logs():
     return jsonify(get_notify_logs(100))
 
-# ── Main ──────────────────────────────────────────────────────
-if __name__ == '__main__':
+# ── Startup ───────────────────────────────────────────────────
+def startup():
+    """เรียกครั้งเดียวตอนเปิด process (serve.py หรือ python app.py)
+    เริ่ม Monitor/การเตือนเองเฉพาะเครื่องหลัก (MONITOR_AUTOSTART=1) — ADR 0001"""
     init_db()
-    # Auto-start monitor ทันทีที่ app เริ่มทำงาน
-    started = _do_start_monitor()
-    print("="*55)
+    closed = close_stuck_backfill_jobs()
+    s = settings.current
+    print("=" * 55)
     print("  Finger Scan Notify — โรงพยาบาลเชียงกลาง")
-    print("  http://localhost:5050")
-    print("  MOPH Alert Monitor: " + ("AUTO-STARTED" if started else "NOT STARTED — " + str(monitor_status["last_error"])))
-    _g = get_db_config()
-    print(f"  Guard: ข้าม scan เก่ากว่า {_g.get('max_scan_age_minutes')} นาที | เพดานต่อรอบ {_g.get('flood_limit')} | โควตา {_g.get('max_per_person_hour')}/คน/ชม.")
-    print(f"  Poll interval: {get_db_config().get('poll_interval', 10)} วินาที")
-    reminders.start()
-    print("  เตือนยังไม่สแกน: ตรวจทุก 60 วินาที (เปิด/ปิด และตั้งเวลาได้ที่หน้า ⏰ เตือนยังไม่สแกน)")
-    print("="*55)
-    app.run(host='0.0.0.0', port=5050, debug=False)
+    if closed:
+        print(f"  ปิดงานส่งย้อนหลังที่ค้างจากการปิดแอปกลางคัน {closed} งาน")
+    if s.monitor_autostart:
+        started = _do_start_monitor()
+        print("  MOPH Alert Monitor: " + ("AUTO-STARTED" if started
+                                         else "NOT STARTED — " + str(monitor_status["last_error"])))
+        reminders.start()
+        print("  เตือนยังไม่สแกน: ตรวจทุก 60 วินาที")
+    else:
+        print("  เครื่องนี้ไม่ใช่เครื่องหลัก (MONITOR_AUTOSTART ไม่ได้ตั้ง) — Monitor และการเตือนไม่เริ่มเอง")
+    if auth.get_account() is None:
+        print("  ยังไม่มีบัญชี admin — รัน: python manage.py init-admin")
+    print("=" * 55, flush=True)
+
+
+if __name__ == '__main__':
+    # เครื่องพัฒนา: Flask dev server · Server จริงใช้ serve.py (waitress) ผ่าน systemd
+    startup()
+    app.run(host=settings.current.listen_host, port=settings.current.listen_port, debug=False)
