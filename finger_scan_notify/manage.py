@@ -151,11 +151,11 @@ def cmd_check(args):
     params = hosoffice.connection_params()
     try:
         conn = hosoffice.connect_readonly(params, raise_errors=True)
+        if conn is None:
+            fail('ต่อไม่ได้ (ยังไม่ได้ตั้งค่าการเชื่อมต่อ?)')
     except hosoffice.Error as e:
         conn = None
         fail(f'ต่อไม่ได้: {e}')
-    if conn is None and not bad:
-        fail('ต่อไม่ได้ (ยังไม่ได้ตั้งค่า?)')
     if conn is not None:
         try:
             ok(f'เชื่อมต่อ {params["host"]}:{params["port"]} ในนาม {params["user"]}')

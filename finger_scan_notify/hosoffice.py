@@ -63,7 +63,7 @@ def get_mysql_connection():
     return connect_readonly(connection_params())
 
 
-def test_mysql_connection(params=None):
+def check_connection(params=None):
     """ปุ่มทดสอบในหน้าตั้งค่า — params None = ค่าที่ระบบใช้อยู่"""
     try:
         c = connect_readonly(params or connection_params(), raise_errors=True)
@@ -73,9 +73,6 @@ def test_mysql_connection(params=None):
         return True, "เชื่อมต่อสำเร็จ ✅ (READ ONLY)"
     except Error as e:
         return False, str(e)
-
-
-test_mysql_connection.__test__ = False      # ไม่ใช่ test ของ pytest
 
 
 def _tbl():

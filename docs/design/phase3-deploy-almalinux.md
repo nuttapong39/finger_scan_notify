@@ -10,6 +10,15 @@
 - เพิ่ม `manage.py reset-checkpoint` (หลังกู้ไฟล์สำรอง ไม่ส่ง scan เก่าซ้ำ) เพราะ Dashboard ไม่มีปุ่ม Reset
 - หน้าตั้งค่าฐานข้อมูลเดิมเขียนรหัส MySQL ลงใน HTML (`value=`) — แก้ให้ไม่ส่งรหัสออกไปเลยทั้งสองโหมด (ช่องว่าง = ใช้รหัสเดิม)
 - เครื่อง Windows ได้ `.env` ที่คงพฤติกรรมเดิมไว้จนถึงวันย้าย (`MONITOR_AUTOSTART=1`, `LISTEN_HOST=0.0.0.0`, hosoffice ยังอ่านจาก SQLite)
+  ขั้นย้ายเครื่องข้อ 1 สั่งเปลี่ยนเป็น `0` ทันทีที่หยุดแอปบน Windows
+- ระหว่างยังใช้รหัสชั่วคราว: เปิด `/dashboard` ได้ตามที่ผู้ใช้ขอ ("เข้าไปหน้า dashboard ได้ให้ pop-up") แต่แสดง**โครงหน้าเปล่า**ใต้ pop-up
+  (ไม่ query สถิติ/scan/token) หน้าอื่นพากลับ Dashboard, API ตอบ 403 — ตรงกับ Q11 "บล็อกทุกหน้าและ API" ในแง่ข้อมูล
+- path ที่ไม่มี route ตอบ 404 โดยไม่ผ่านการตรวจล็อกอิน (เดิมได้ 302 → smoke ตรวจ `data/backups/` ไม่ผ่าน → deploy ย้อนรุ่นทุกครั้ง — code review จับได้)
+- smoke **ไม่ได้ตรวจว่า Monitor ทำงาน**: สถานะ Monitor อยู่หลังล็อกอิน และผู้ใช้ `scannotify` อ่าน journal ไม่ได้ — ให้ดู `sudo journalctl` ตามขั้นย้ายเครื่องข้อ 8
+- sudoers ไม่มี `is-active` (ไม่ต้องใช้ root) · systemd `ReadWritePaths` มีแค่ `data/` (แอปไม่เขียน `logs/`)
+- หน้าตั้งค่าฐานข้อมูล: poll interval ถูกบังคับอยู่ในช่วง 10–3600 วินาที (หน้าเว็บบอก "ขั้นต่ำ 10" อยู่แล้วแต่เดิมไม่บังคับ)
+  และช่องรหัสว่างใช้รหัสเดิมเฉพาะเมื่อ host/port/user เดิม (ไม่พกรหัสที่เก็บไว้ไปให้ host ที่พิมพ์ใหม่)
+- นับรหัสผิดใน transaction เดียว (`BEGIN IMMEDIATE`) เพราะ waitress มีหลาย thread
 **ต้นแบบ:** `C:\Dev\Projects\IPD Overview\SERVER-SETUP-ALMALINUX.md`, `DEPLOYMENT.md`, `deploy/*` (อ่านอย่างเดียว ไม่ได้แก้)
 **ADR:** [0001 — process เดียว เครื่องเดียว](../adr/0001-single-process.md)
 

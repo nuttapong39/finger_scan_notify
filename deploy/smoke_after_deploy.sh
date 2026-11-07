@@ -73,4 +73,4 @@ else
 fi
 printf '%s' "$hdrs" | grep -qi 'x-frame-options' && pass "X-Frame-Options" "-" || nope "X-Frame-Options" "-" "ตรวจ nginx conf"
 
-if [ "$bad" = 0 ]; then printf '\n\033[1;32m✓ ผ่านทุกข้อ\033[0m\n'; else printf '\n\033[1;31m✗ มีข้อที่ไม่ผ่าน — ห้ามเปิดให้ผู้ใช้จนกว่าจะแก้\033[0m\n' >&2; exit 1; fi
+if [ "$bad" = 0 ]; then printf '\n\033[1;32m✓ ผ่านทุกข้อ\033[0m\n'; else printf '\n\033[1;31m✗ มีข้อที่ไม่ผ่าน — ห้ามเปิดใช้งานจนกว่าจะแก้\033[0m\n' >&2; exit 1; fi

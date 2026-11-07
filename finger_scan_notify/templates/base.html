@@ -534,7 +534,7 @@ tr:hover td { background: var(--bg-card-hover); }
     </div>
 
     <div class="sidebar-section">
-      <div class="sidebar-section-label">บัญชี · {{ admin_user or '' }}</div>
+      <div class="sidebar-section-label">บัญชี · {{ admin_name or "" }}</div>
       <nav class="sidebar-nav">
         <a href="/account/password" class="{{ 'active' if request.endpoint == 'auth.change_password' else '' }}">
           <span class="icon">🔐</span> เปลี่ยนรหัสผ่าน
@@ -613,7 +613,7 @@ tr:hover td { background: var(--bg-card-hover); }
 (function () {
   const orig = window.fetch.bind(window);
   window.fetch = (...args) => orig(...args).then(r => {
-    if (r.status === 401) location.href = '/login?next=' + encodeURIComponent(location.pathname);
+    if (r.status === 401) location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
     return r;
   });
 })();

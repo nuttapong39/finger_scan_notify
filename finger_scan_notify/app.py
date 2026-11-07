@@ -16,7 +16,7 @@ from database import (
 )
 from hosoffice import (
     get_recent_scans_from_mysql, get_today_stats, get_new_scans_from_mysql,
-    get_max_scan_id, test_mysql_connection, get_muted_person_ids
+    get_max_scan_id, check_connection, get_muted_person_ids
 )
 import auth
 import reminders
@@ -228,6 +228,10 @@ def index(): return redirect(url_for('dashboard'))
 
 @app.route('/dashboard')
 def dashboard():
+    if auth.must_change_password():
+        # ยังใช้รหัสชั่วคราว: แสดงแค่โครงหน้า + pop-up บังคับเปลี่ยนรหัส ไม่มีข้อมูลบุคลากรอยู่ข้างหลัง (Q11)
+        return render_template('dashboard.html', stats={}, hourly=[], dept=[], trend=[], recent=[],
+                               monitor=monitor_status, flex_tokens=[], today=datetime.now().strftime('%d/%m/%Y'))
     data   = get_today_stats()
     recent = get_recent_scans_from_mysql(50)
     for r in recent:
@@ -264,33 +268,36 @@ def api_dashboard_data():
 def config_database():
     """ค่าการเชื่อมต่อ: ถ้าอยู่ใน .env แก้ที่นี่ไม่ได้ (Q6) · รหัสผ่านไม่ถูกส่งออกไปที่ browser เลย (ช่องว่าง = ใช้รหัสเดิม)"""
     env_conn = settings.current.hosoffice
-    cur = get_db_config()
-    f = request.form
+    stored = get_db_config()
+    form = request.form
     if request.method == 'POST':
-        tbl = f.get('table_name', '').strip() or 'fingle_scan'
+        table = form.get('table_name', '').strip() or 'fingle_scan'
         try:
-            itv = max(10, min(3600, int(f.get('poll_interval') or 10)))
+            poll_seconds = max(10, min(3600, int(form.get('poll_interval') or 10)))   # ขั้นต่ำ 10 ตามที่หน้าเว็บบอก
         except ValueError:
-            itv = 10
+            poll_seconds = 10
         if env_conn:
-            if 'test' in f:
-                ok, msg = test_mysql_connection()
+            if 'test' in form:
+                ok, msg = check_connection()
                 return jsonify({'success': ok, 'message': msg})
-            save_db_settings(tbl, itv)
+            save_db_settings(table, poll_seconds)
         else:
-            host, user, db = f.get('host','').strip(), f.get('username','').strip(), f.get('database_name','').strip()
-            port = f.get('port','3306').strip() or '3306'
-            pw = f.get('password') or cur.get('password', '')
-            if 'test' in f:
-                ok, msg = test_mysql_connection({'host': host, 'port': port, 'user': user,
-                                                 'password': pw, 'database': db})
+            host, user = form.get('host', '').strip(), form.get('username', '').strip()
+            database_name = form.get('database_name', '').strip()
+            port = form.get('port', '3306').strip() or '3306'
+            # ช่องว่าง = ใช้รหัสเดิม เฉพาะเมื่อยังเป็นเครื่อง/บัญชีเดิม — ไม่พกรหัสที่เก็บไว้ไปให้ host อื่น
+            same_server = (host, str(port), user) == (stored.get('host'), str(stored.get('port')), stored.get('username'))
+            password = form.get('password') or (stored.get('password', '') if same_server else '')
+            if 'test' in form:
+                ok, msg = check_connection({'host': host, 'port': port, 'user': user,
+                                            'password': password, 'database': database_name})
                 return jsonify({'success': ok, 'message': msg})
-            save_db_config(host, port, user, pw, db, tbl, itv)
+            save_db_config(host, port, user, password, database_name, table, poll_seconds)
         flash('บันทึกการตั้งค่าฐานข้อมูลเรียบร้อย', 'success')
         return redirect(url_for('config_database'))
-    cfg = {k: v for k, v in cur.items() if k != 'password'}
+    cfg = {k: v for k, v in stored.items() if k != 'password'}
     return render_template('config_database.html', cfg=cfg, env_conn=env_conn,
-                           has_password=bool(cur.get('password')))
+                           has_password=bool(stored.get('password')))
 
 # ── Config API ────────────────────────────────────────────────
 @app.route('/config/api', methods=['GET','POST'])

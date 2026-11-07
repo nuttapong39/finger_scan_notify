@@ -107,7 +107,7 @@ def test_login_success_and_logout(anon_client, admin_account):
 
 def test_login_wrong_password(anon_client, admin_account):
     r = login(anon_client, password='nope-nope-nope')
-    assert r.status_code == 401 and 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' in r.get_data(as_text=True)
+    assert r.status_code == 401 and 'บัญชีหรือรหัสผ่านไม่ถูกต้อง' in r.get_data(as_text=True)
     assert login(anon_client, username='root').status_code == 401
 
 
@@ -239,3 +239,34 @@ def test_login_post_also_checks_origin(anon_client, admin_account):
     r = anon_client.post('/login', data={'username': 'admin', 'password': NEW_PASSWORD},
                          headers={'Origin': 'http://evil.example'})
     assert r.status_code == 403
+
+
+# ── จาก code review ───────────────────────────────────────────
+def test_unknown_path_is_404_not_login_redirect(anon_client):
+    """path ที่ไม่มี route ต้องได้ 404 (smoke_after_deploy ตรวจ data/backups/, templates/... ต้อง 403/404)"""
+    for p in ('/templates/base.html', '/data/backups/', '/nope'):
+        assert anon_client.get(p).status_code == 404
+
+
+def test_endpoint_names_in_auth_rules_exist():
+    """ชื่อ endpoint ใน auth เป็น string — เปลี่ยนชื่อ route แล้วลืมแก้ที่นี่ = กฎเงียบหาย"""
+    names = {r.endpoint for r in app_module.app.url_map.iter_rules()}
+    for group in (auth.PUBLIC_ENDPOINTS, auth.MUST_CHANGE_ENDPOINTS, auth.BACKGROUND_ENDPOINTS):
+        assert group <= names, group - names
+
+
+def test_must_change_dashboard_shows_no_data(temp_client):
+    """ระหว่างยังไม่เปลี่ยนรหัสชั่วคราว Dashboard แสดงแค่ pop-up — ไม่มีชื่อบุคลากร/token อยู่ข้างหลัง"""
+    import database
+    database.save_token(7, 'บุคลากรลับ', 'MOPH_ALERT', '', 'ck', 'sk', 'งานลับ', 1, 1)
+    html = temp_client.get('/dashboard').get_data(as_text=True)
+    assert 'id="force-password-modal"' in html and 'บุคลากรลับ' not in html
+
+
+def test_concurrent_failures_still_lock(anon_client, admin_account):
+    """waitress 8 thread: นับรหัสผิดพร้อมกันต้องไม่หาย (อ่าน-แล้ว-เขียน แยกกันจะนับขาด)"""
+    import threading
+    ts = [threading.Thread(target=auth._record_failure, args=('10.0.0.9',)) for _ in range(auth.MAX_FAILURES)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert auth.locked_seconds('10.0.0.9') > 0

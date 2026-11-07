@@ -33,10 +33,14 @@ esac
 
 se=$(getenforce 2>/dev/null || echo 'n/a')
 if [ "$se" = "Enforcing" ]; then
-    if command -v semanage >/dev/null 2>&1 && semanage port -l 2>/dev/null | awk '$1=="http_port_t"' | grep -qw "$PORT"; then
-        ok "SELinux Enforcing: พอร์ต $PORT เป็น http_port_t (nginx ส่งต่อได้)"
-    elif [ "$(getsebool httpd_can_network_connect 2>/dev/null | awk '{print $3}')" = "on" ]; then
+    # semanage อ่าน policy store ได้เฉพาะ root — รันในนาม scannotify จะได้ผลว่าง จึงแยก "ตรวจไม่ได้" ออกจาก "ไม่ได้ตั้ง"
+    ports=$(semanage port -l 2>/dev/null || true)
+    if [ "$(getsebool httpd_can_network_connect 2>/dev/null | awk '{print $3}')" = "on" ]; then
         ok "SELinux Enforcing: httpd_can_network_connect = on"
+    elif [ -z "$ports" ]; then
+        warn "SELinux Enforcing: ตรวจป้ายพอร์ต $PORT ไม่ได้ในนามผู้ใช้นี้ — ตรวจเอง: sudo semanage port -l | grep -w http_port_t (smoke ที่ได้ /login 200 ก็ยืนยันได้)"
+    elif printf '%s\n' "$ports" | awk '$1=="http_port_t"' | grep -qw "$PORT"; then
+        ok "SELinux Enforcing: พอร์ต $PORT เป็น http_port_t (nginx ส่งต่อได้)"
     else
         fail "SELinux Enforcing แต่ nginx ยังต่อ 127.0.0.1:$PORT ไม่ได้ (sudo semanage port -a -t http_port_t -p tcp $PORT — ดู SERVER-SETUP-ALMALINUX.md ข้อ 5)"
     fi

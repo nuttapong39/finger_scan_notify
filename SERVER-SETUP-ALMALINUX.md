@@ -160,6 +160,7 @@ sudo -u scannotify ./deploy/smoke_after_deploy.sh http://scan-notify.ckhospital.
 
 1. **หยุดแอปบน Windows:** ปิดหน้าต่างที่รัน `python app.py` (เปิดด้วยมือ ไม่มี autostart — ตรวจแล้ว)
    ตรวจว่าหยุดจริง: `netstat -ano | findstr :5050` ต้องไม่มี `LISTENING`
+   แล้วแก้ `finger_scan_notify\.env` บน Windows เป็น `MONITOR_AUTOSTART=0` **ทันที** — ถ้ามีคนเผลอเปิดแอปบน Windows อีกครั้ง Monitor จะไม่เริ่มเอง
 2. **คัดลอกฐานข้อมูล** (token 94 คน, log, Theme, ค่าเตือน, ตำแหน่ง scan ล่าสุด) จาก Windows:
    ```powershell
    scp C:\Dev\Projects\notify_fingle_scan-master\finger_scan_notify\data\app_config.db <ผู้ใช้>@dashboard-srv:/tmp/app_config.db
@@ -182,8 +183,10 @@ sudo -u scannotify ./deploy/smoke_after_deploy.sh http://scan-notify.ckhospital.
    ตอนเริ่ม แอปลบรหัส MySQL ที่ติดมากับฐานข้อมูลจาก Windows ทิ้งเอง (เพราะ `.env` มีแล้ว)
 5. **ทดสอบ:** ล็อกอิน → Dashboard → 🎨 ปรับแต่ง Flex card → ส่งทดสอบไปที่ token ของตัวเอง
 6. **scan ระหว่างช่วงย้าย:** Monitor ส่งต่อจาก `last_scan_id` เดิมเอง (เฉพาะที่เก่าไม่เกิน 180 นาที) ที่ตกหล่นใช้หน้า 🔁 ตรวจสอบและส่งย้อนหลัง
-7. **เครื่อง Windows:** แก้ `finger_scan_notify\.env` เป็น `MONITOR_AUTOSTART=0` — นับจากนี้เป็นเครื่องพัฒนา
+7. **เครื่อง Windows:** นับจากนี้เป็นเครื่องพัฒนา (`MONITOR_AUTOSTART=0` ตั้งแล้วในขั้นที่ 1)
    ถ้ามีคนกดเริ่ม Monitor บน Windows หน้าเว็บจะขึ้นแถบแดงเตือนว่าไม่ใช่เครื่องหลัก
+8. **ตรวจว่า Monitor ทำงาน:** `smoke_after_deploy.sh` ตรวจได้แค่ว่าบริการ active (Monitor อยู่หลังล็อกอิน และผู้ใช้ระบบ `scannotify` อ่าน journal ไม่ได้)
+   ดูเองด้วย `sudo journalctl -u scan-notify -n 20` หรือแถบ Monitor Status ใน sidebar หลังล็อกอิน
 
 ## 10. ถ้าติดปัญหา
 

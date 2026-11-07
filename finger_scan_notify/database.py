@@ -251,7 +251,6 @@ def save_db_config(host, port, username, password, database_name, table_name, po
                  (host, int(port), username, password, database_name, table_name, int(poll_interval)))
     conn.commit(); conn.close()
 
-# ── API Config ────────────────────────────────────────────────
 def save_db_settings(table_name, poll_interval):
     """เฉพาะค่าที่ไม่ใช่ความลับ — ใช้เมื่อค่าการเชื่อมต่ออยู่ใน .env"""
     conn = get_sqlite_conn()
@@ -259,6 +258,8 @@ def save_db_settings(table_name, poll_interval):
                  (table_name, int(poll_interval)))
     conn.commit(); conn.close()
 
+
+# ── API Config ────────────────────────────────────────────────
 def get_api_config():
     conn = get_sqlite_conn()
     row = conn.execute("SELECT * FROM api_config WHERE id=1").fetchone()

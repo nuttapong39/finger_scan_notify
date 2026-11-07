@@ -151,3 +151,12 @@ def test_check_warns_without_admin(tmp_db, monkeypatch, capsys):
     monkeypatch.setattr(hosoffice, 'connect_readonly', lambda p, raise_errors=False: CheckConn())
     code, out = run(capsys, 'check')
     assert code == 1 and 'init-admin' in out
+
+
+def test_check_reports_hosoffice_even_after_earlier_failure(tmp_db, monkeypatch, capsys):
+    """APP_ENV ไม่ใช่ production (FAIL แรก) แล้ว hosoffice ต่อไม่ได้ ต้องยังรายงานหัวข้อ hosoffice"""
+    monkeypatch.setattr(manage, 'tcp_reachable', lambda host, port: True)
+    monkeypatch.setattr(hosoffice, 'connect_readonly', lambda p, raise_errors=False: None)
+    code, out = run(capsys, 'check')
+    hos = out.split('== hosoffice')[1].split('== MOPH')[0]
+    assert code == 1 and 'FAIL' in hos
