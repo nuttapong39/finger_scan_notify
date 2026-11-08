@@ -12,7 +12,8 @@ import settings
 
 TABLE = 'ZFP_TimeInOut'
 SEQ_COL = 'ID_TimeInout'          # = fingle_scan.MACHIN_SCAN_ID (Device sequence) — ยืนยันด้วย manage.py tiger-check
-TIME_COL = 'TimeInout'
+TIME_COL = 'TimeInout'            # เวลาที่เครื่องบันทึก — ระดับนาทีเท่านั้น (วินาที = 00)
+COMMIT_COL = 'CommitTime'         # เวลาถึงวินาที — ค่านี้คือ SCAN_DATE_TIME ที่ตัวนำเข้าเดิมเก็บใน hosoffice (±1 วินาที)
 CHUNK = 500
 _IDENT = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 _SELECT_ONLY = re.compile(r'^\s*SELECT\b', re.I)
@@ -110,9 +111,27 @@ def _normalise(raw):
         seq = int(raw[SEQ_COL])
     except (KeyError, TypeError, ValueError):
         raise TigerUnavailable(f'ผลที่ได้ไม่มีคอลัมน์ {SEQ_COL} (ตรวจชื่อตารางด้วย manage.py tiger-check)') from None
-    return {'seq': seq, 'time': raw.get(TIME_COL),
-            'person': raw.get(person_col) if person_col else None,
-            'machine': raw.get(machine_col) if machine_col else None}
+    return {'seq': seq, 'time': raw.get(COMMIT_COL) or raw.get(TIME_COL), 'device_time': raw.get(TIME_COL),
+            'person': _whole(raw.get(person_col)) if person_col else None,
+            'machine': _whole(raw.get(machine_col)) if machine_col else None}
+
+
+def _whole(v):
+    """คอลัมน์ numeric ของ SQL Server มาเป็น Decimal — แปลงเป็นจำนวนเต็มเมื่อไม่มีเศษ (ใช้เป็นกุญแจจับคู่ hr_person ได้ตรง ๆ)"""
+    try:
+        return int(v) if v is not None and int(v) == v else v
+    except (TypeError, ValueError):
+        return v
+
+
+def same_scan_time(hos_time, src):
+    """เวลาใน hosoffice ตรงกับแถวต้นทางไหม: ตัวนำเข้าเก็บ CommitTime (ถึงวินาที, คลาดได้ ~2 วินาที) หรือ TimeInout (ระดับนาที) อย่างใดอย่างหนึ่ง"""
+    if not src or not hos_time:
+        return False
+    t = src.get('time')
+    if t and abs((hos_time - t).total_seconds()) <= 2:
+        return True
+    return bool(src.get('device_time') and hos_time == src['device_time'])
 
 
 def get_rows(seqs):
@@ -123,7 +142,7 @@ def get_rows(seqs):
         return out
     t = settings.current.tiger
     # เลือกเฉพาะคอลัมน์ที่ใช้ (ตารางของเครื่องสแกนอาจมีรูป/ข้อมูลใบหน้าขนาดใหญ่) — ชื่อคอลัมน์จาก .env ตรวจรูปแบบก่อนต่อเข้า SQL
-    wanted = [SEQ_COL, TIME_COL, t['person_column'], t['machine_column']]
+    wanted = [SEQ_COL, TIME_COL, COMMIT_COL, t['person_column'], t['machine_column']]
     for name in wanted:
         if name and not _IDENT.match(name):
             raise TigerUnavailable(f'ชื่อคอลัมน์ไม่ถูกต้อง: {name!r}')

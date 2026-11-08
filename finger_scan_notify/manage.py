@@ -207,7 +207,7 @@ def cmd_tiger_check(args):
     print(f'  ok   ตาราง {tigersoft.TABLE}: {len(cols)} คอลัมน์')
     print('       ' + ', '.join(f'{c} ({k})' for c, k in cols))
     bad = 0
-    for needed in (tigersoft.SEQ_COL, tigersoft.TIME_COL):
+    for needed in (tigersoft.SEQ_COL, tigersoft.TIME_COL, tigersoft.COMMIT_COL):
         if needed not in names:
             print(f'  FAIL ไม่พบคอลัมน์ {needed}')
             bad = 1
@@ -226,13 +226,13 @@ def cmd_tiger_check(args):
     except hosoffice.HosofficeUnavailable as e:
         print(f'  WARN เทียบกับ hosoffice ไม่ได้: {e}')
         return bad
-    seqs = [r['seq'] for r in window]
+    seqs = sorted({r['seq'] for r in window})          # hosoffice อาจมีแถวซ้ำเลขเดียวกัน — นับเลขที่ไม่ซ้ำ
     try:
         src = tigersoft.get_rows(seqs)
     except tigersoft.TigerUnavailable as e:
         print(f'  FAIL อ่านแถวเพื่อเทียบไม่ได้: {e}')
         return 1
-    same_time = sum(1 for r in window if r['seq'] in src and src[r['seq']]['time'] == r['time'])
+    same_time = len({r['seq'] for r in window if tigersoft.same_scan_time(r['time'], src.get(r['seq']))})
     verdict = 'FAIL' if seqs and (not src or not same_time) else ('ok  ' if len(src) == len(seqs) else 'WARN')
     print(f"  {verdict} เลขของ hosoffice ล่าสุด {len(seqs)} แถว: พบที่เครื่อง {len(src)}/{len(seqs)} · เวลาตรงกัน {same_time}/{len(seqs)}")
     if verdict == 'FAIL':

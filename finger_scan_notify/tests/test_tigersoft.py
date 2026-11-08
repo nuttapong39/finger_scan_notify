@@ -45,7 +45,7 @@ def test_tiger_is_off_unless_a_host_is_configured():
 def test_tiger_settings_are_read_with_defaults():
     t = settings.load({**PROD, **TIGER_ENV}).tiger
     assert t == {'host': '192.168.1.77', 'port': 1433, 'database': 'TigerWebServerPlus', 'user': 'office',
-                 'password': 'p@ss-secret', 'person_column': '', 'machine_column': ''}
+                 'password': 'p@ss-secret', 'person_column': 'PersonCardID', 'machine_column': 'MachID'}
     t = settings.load({**TIGER_ENV, 'TIGER_PORT': '14330', 'TIGER_PERSON_COLUMN': 'FingerID',
                        'TIGER_MACHINE_COLUMN': 'MachineNo'}).tiger
     assert t['port'] == 14330 and t['person_column'] == 'FingerID' and t['machine_column'] == 'MachineNo'
@@ -103,6 +103,7 @@ def tiger(monkeypatch):
             return [{'m': st['max']}]
         if 'INFORMATION_SCHEMA' in sql.upper():
             return [{'COLUMN_NAME': 'ID_TimeInout', 'DATA_TYPE': 'int'}, {'COLUMN_NAME': 'TimeInout', 'DATA_TYPE': 'datetime'},
+                    {'COLUMN_NAME': 'CommitTime', 'DATA_TYPE': 'datetime'},
                     {'COLUMN_NAME': 'FingerID', 'DATA_TYPE': 'int'}, {'COLUMN_NAME': 'MachineNo', 'DATA_TYPE': 'int'}]
         if sql.upper().count('TOP 1') and 'ORDER BY' in sql.upper():
             return [st['rows'][max(st['rows'])]] if st['rows'] else []
@@ -130,8 +131,8 @@ def test_not_configured_means_unavailable_not_a_crash(monkeypatch):
 def test_rows_are_looked_up_by_sequence_with_bound_parameters_and_normalised(tiger):
     tiger['rows'] = {10: src_row(10, at(8, 1)), 11: src_row(11, at(8, 2), person=9, machine=3)}
     got = tigersoft.get_rows([10, 11, 12])
-    assert got == {10: {'seq': 10, 'time': at(8, 1), 'person': 7, 'machine': 2},
-                   11: {'seq': 11, 'time': at(8, 2), 'person': 9, 'machine': 3}}      # 12 ไม่มีที่เครื่อง → ไม่อยู่ในผล
+    assert got == {10: {'seq': 10, 'time': at(8, 1), 'device_time': at(8, 1), 'person': 7, 'machine': 2},
+                   11: {'seq': 11, 'time': at(8, 2), 'device_time': at(8, 2), 'person': 9, 'machine': 3}}      # 12 ไม่มีที่เครื่อง → ไม่อยู่ในผล
     sql, params = tiger['conn'].executed[0]
     assert params == (10, 11, 12) and '10' not in sql and 'ZFP_TimeInOut' in sql
     assert tiger['conn'].closed
@@ -224,7 +225,7 @@ def test_when_the_scanner_database_is_unreachable_lost_scans_still_alert_without
 
 
 def test_without_a_person_column_the_name_is_simply_left_out(watch, tiger, monkeypatch):
-    monkeypatch.setattr(settings, 'current', settings.load({**PROD, **TIGER_ENV}))
+    monkeypatch.setattr(settings, 'current', settings.load({**PROD, **TIGER_ENV, 'TIGER_PERSON_COLUMN': ''}))
     watch['rows'] = [row(1, at(8, 0)), row(3, at(8, 2))]
     tiger['rows'] = {1: src_row(1, at(8, 0)), 2: src_row(2, at(8, 1, 20)), 3: src_row(3, at(8, 2))}
     tiger['max'] = 3
@@ -426,3 +427,28 @@ def test_a_configured_column_name_with_odd_characters_is_refused(tiger, monkeypa
     monkeypatch.setattr(settings, 'current', settings.load({**TIGER_ENV, 'TIGER_PERSON_COLUMN': 'a; DROP TABLE x'}))
     with pytest.raises(tigersoft.TigerUnavailable):
         tigersoft.get_rows([1])
+
+
+# ── ตรวจกับเครื่องจริง (8 พ.ย. 2569): TimeInout ระดับนาที / CommitTime ถึงวินาที / numeric เป็น Decimal ──
+def test_the_scan_time_is_the_commit_time_with_seconds_and_numeric_ids_become_plain_integers(tiger):
+    from decimal import Decimal
+    tiger['rows'] = {5: {'ID_TimeInout': Decimal('5'), 'TimeInout': at(18, 59), 'CommitTime': at(18, 59, 14),
+                         'FingerID': Decimal('77'), 'MachineNo': Decimal('3')}}
+    r = tigersoft.get_rows([5])[5]
+    assert r['time'] == at(18, 59, 14) and r['device_time'] == at(18, 59)
+    assert r['person'] == 77 and type(r['person']) is int and r['machine'] == 3
+
+
+def test_a_hosoffice_time_matches_either_the_commit_second_or_the_device_minute():
+    src = {'time': at(18, 59, 14), 'device_time': at(18, 59)}
+    assert tigersoft.same_scan_time(at(18, 59, 14), src) and tigersoft.same_scan_time(at(18, 59, 15), src)
+    assert tigersoft.same_scan_time(at(18, 59), src)                          # แถวที่ตัวนำเข้าเก็บเวลาระดับนาที
+    assert not tigersoft.same_scan_time(at(18, 40), src) and not tigersoft.same_scan_time(at(18, 59), None)
+
+
+def test_tiger_check_counts_a_row_as_matching_when_hosoffice_stored_the_commit_second(tmp_db, tiger, monkeypatch, capsys):
+    tiger['max'] = 10
+    monkeypatch.setattr(hosoffice, 'get_device_window', lambda n: [row(9, at(8, 1, 14)), row(10, at(8, 2))])
+    tiger['rows'] = {9: dict(src_row(9, at(8, 1)), CommitTime=at(8, 1, 14)), 10: dict(src_row(10, at(8, 2)), CommitTime=at(8, 2, 9))}
+    assert manage.main(['tiger-check']) == 0
+    assert '2/2' in capsys.readouterr().out

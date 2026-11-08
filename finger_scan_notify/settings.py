@@ -87,8 +87,10 @@ def load(env):
         tiger = {'host': env['TIGER_HOST'].strip(), 'port': _port(env, 'TIGER_PORT', 1433),
                  'database': env['TIGER_DATABASE'].strip(), 'user': env['TIGER_USER'].strip(),
                  'password': env['TIGER_PASSWORD'],
-                 'person_column': env.get('TIGER_PERSON_COLUMN', '').strip(),
-                 'machine_column': env.get('TIGER_MACHINE_COLUMN', '').strip()}
+                 # ยืนยันกับ XFace100 จริงแล้ว (8 พ.ย. 2569): PersonCardID = hr_person.FINGLE_ID, MachID = fingle_scan.MACHIN_ID
+                 # ไม่ตั้งในไฟล์ = ใช้ค่านี้ ; ตั้งเป็นค่าว่างเพื่อปิด
+                 'person_column': env.get('TIGER_PERSON_COLUMN', 'PersonCardID').strip(),
+                 'machine_column': env.get('TIGER_MACHINE_COLUMN', 'MachID').strip()}
 
     return Settings(
         app_env=app_env, secret_key=secret, hosoffice=hosoffice,
