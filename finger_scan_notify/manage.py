@@ -246,7 +246,17 @@ COMMANDS = {'tiger-check': cmd_tiger_check, 'init-admin': cmd_init_admin, 'reset
             'can-restart': cmd_can_restart, 'reset-checkpoint': cmd_reset_checkpoint, 'check': cmd_check}
 
 
+def _safe_console():
+    """คอนโซล Windows ไทยเป็น cp874 พิมพ์ ✓ ✗ → อิโมจิไม่ได้ — แทนด้วย ? แทนที่จะล้มหลังทำงานเสร็จไปแล้ว"""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors='replace')
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv):
+    _safe_console()
     if not argv or argv[0] not in COMMANDS:
         print(__doc__)
         return 2

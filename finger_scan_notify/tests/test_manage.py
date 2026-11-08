@@ -160,3 +160,13 @@ def test_check_reports_hosoffice_even_after_earlier_failure(tmp_db, monkeypatch,
     code, out = run(capsys, 'check')
     hos = out.split('== hosoffice')[1].split('== MOPH')[0]
     assert code == 1 and 'FAIL' in hos
+
+
+def test_commands_do_not_crash_on_a_thai_windows_console_that_cannot_print_check_marks(tmp_db, monkeypatch, capsys):
+    import io
+    import sys
+    console = io.TextIOWrapper(io.BytesIO(), encoding='cp874', errors='strict')
+    monkeypatch.setattr(sys, 'stdout', console)
+    assert manage.main(['can-restart']) == 0
+    console.flush()
+    assert 'restart' in console.buffer.getvalue().decode('cp874')
