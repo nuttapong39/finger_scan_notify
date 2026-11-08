@@ -32,7 +32,7 @@ from routes_phase2 import bp as phase2_bp
 app = Flask(__name__)
 auth.install(app, settings.current.secret_key)     # ทุก route ต้องล็อกอิน (ยกเว้น /login)
 app.register_blueprint(phase2_bp)
-app.jinja_env.globals.update(icon=icons.icon, sprite_url=icons.sprite_url)   # ไอคอน Lucide / Simple Icons ใน template
+app.jinja_env.globals.update(icon=icons.icon, sprite_url=icons.sprite_url, static_url=icons.static_url)   # ไอคอน Lucide / Simple Icons ใน template
 app.jinja_env.filters['initial'] = icons.initial
 
 # ── Monitor state ─────────────────────────────────────────────

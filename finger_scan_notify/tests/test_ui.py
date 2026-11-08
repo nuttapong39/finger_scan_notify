@@ -189,3 +189,19 @@ def test_nginx_does_not_block_the_static_assets():
     conf = (pathlib.Path(__file__).parents[2] / 'deploy' / 'nginx-scan-notify.conf').read_text(encoding='utf-8')
     deny = re.search(r'location ~\* \\\.\(([^)]*)\)\$ \{ deny all', conf).group(1).split('|')
     assert not {'svg', 'png', 'css', 'js'} & set(deny)
+
+
+def test_css_js_and_logo_urls_carry_a_version_so_browsers_do_not_keep_stale_files(login_page):
+    for name in ('app.css', 'appearance.js', 'logo_ck.png', 'icons.svg'):
+        pattern = rf'/static/{re.escape(name)}\?v=\d+' if name != 'icons.svg' else None
+        if pattern:
+            assert re.search(pattern, login_page), name
+    # sprite ถูกเรียกผ่าน <use> ซึ่งอยู่ในทุกหน้าที่มีไอคอน
+    assert re.search(r'icons\.svg\?v=\d+#', login_page)
+
+
+def test_post_deploy_smoke_checks_the_static_files_through_nginx():
+    import pathlib
+    smoke = (pathlib.Path(__file__).parents[2] / 'deploy' / 'smoke_after_deploy.sh').read_text(encoding='utf-8')
+    for name in ('app.css', 'appearance.js', 'icons.svg', 'logo_ck.png'):
+        assert f'static/{name}' in smoke

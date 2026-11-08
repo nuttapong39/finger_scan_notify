@@ -22,7 +22,7 @@ body { display:flex; align-items:center; justify-content:center; padding:16px; }
 <div class="login-corner">{% include "_appearance_toggle.html" %}</div>
 <form class="login-card" method="POST" action="/login" autocomplete="off">
   <div class="brand">
-    <img src="{{ url_for('static', filename='logo_ck.png') }}" alt="ตราโรงพยาบาลเชียงกลาง" width="64" height="64">
+    <img src="{{ static_url('logo_ck.png') }}" alt="ตราโรงพยาบาลเชียงกลาง" width="64" height="64">
     <div class="hosp">โรงพยาบาลเชียงกลาง</div>
     <h1>Finger Scan Notify</h1>
   </div>

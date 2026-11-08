@@ -1,6 +1,8 @@
 /* Finger Scan Notify — สไตล์กลางของทุกหน้า
    Appearance มี 2 แบบ: สว่าง (:root = ค่าเริ่มต้น) และ มืด ([data-appearance="dark"])
-   สีทุกจุดอ้าง token ด้านล่าง ห้ามใส่ hex ในหน้า — ถ้าต้องการสีใหม่ ให้เพิ่ม token ทั้งสองโหมด */
+   สีทุกจุดอ้าง token ด้านล่าง — ถ้าต้องการสีใหม่ ให้เพิ่ม token ทั้งสองโหมด
+   ข้อยกเว้นที่ตั้งใจ: (1) ตัวอย่างข้อความ/การ์ดของ LINE ในหน้า MOPH Alert API ใช้สีของ LINE ตายตัวทั้งสองโหมด
+   (2) ตัวอักษรบนปุ่มทึบเป็นขาว/ดำคงที่ (3) เงาของป๊อปอัปปฏิทิน */
 
 :root {
   --bg-base:       #f6f7f9;
@@ -18,7 +20,7 @@
   --accent-purple: #6d28d9;
   --text-primary:  #111827;
   --text-secondary:#4b5563;
-  --text-muted:    #6b7280;
+  --text-muted:    #5b6470;
   --tint-blue:     rgba(37, 99, 235, .08);
   --tint-green:    rgba(21, 128, 61, .10);
   --tint-red:      rgba(185, 28, 28, .08);
@@ -230,6 +232,10 @@ select.form-control { appearance: auto; }
 .toggle input:checked + .toggle-slider { background: var(--tint-blue); border-color: var(--accent-blue); }
 .toggle input:checked + .toggle-slider:before { transform: translateX(16px); background: var(--accent-blue); }
 .toggle input:focus-visible + .toggle-slider { box-shadow: 0 0 0 3px var(--tint-blue); }
+
+a:focus-visible, .btn:focus-visible, .icon-btn:focus-visible, .form-control:focus-visible, .sidebar-logout:focus-visible, .tdp-day:focus-visible {
+  outline: 2px solid var(--accent-blue); outline-offset: 2px;
+}
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }

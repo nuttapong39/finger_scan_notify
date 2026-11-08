@@ -218,7 +218,7 @@ python -m pytest tests
 
 ## หน้าตาเว็บ (Appearance สว่าง/มืด + ไอคอน)
 - ค่าเริ่มต้น **สว่าง**; ปุ่มพระจันทร์/พระอาทิตย์สลับเป็นมืด จำต่อ browser ไม่ตามค่าของระบบปฏิบัติการ
-- สีทุกจุดอ้าง token ใน `static/app.css` (`:root` = สว่าง, `[data-appearance="dark"]` = มืด) — ห้ามใส่ hex ในหน้า
+- สีทุกจุดอ้าง token ใน `static/app.css` (`:root` = สว่าง, `[data-appearance="dark"]` = มืด) — ไม่ใส่ hex ในหน้า ยกเว้นตัวอย่างข้อความ/การ์ด LINE ในหน้า MOPH Alert API (ใช้สีของ LINE ตายตัว)
 - ไอคอน: Lucide (ISC) และโลโก้แบรนด์ Simple Icons (CC0, ชื่อขึ้นต้น `brand-`) เรียกด้วย `{{ icon('ชื่อ') }}` ใน template หรือ `icon('ชื่อ')` ใน JS
 - เพิ่มไอคอนใหม่: เรียก `icon('ชื่อ')` แล้วสร้าง sprite ใหม่
   ```

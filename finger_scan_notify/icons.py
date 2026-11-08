@@ -14,14 +14,17 @@ _NAME = re.compile(r'^[a-z0-9-]+$')
 _THAI_LEADING_VOWELS = 'เแโใไ'
 
 
-def sprite_url():
-    """URL ของ sprite พร้อมเลขเวอร์ชัน (เปลี่ยนไฟล์แล้ว browser โหลดใหม่เอง)"""
-    path = os.path.join(STATIC_DIR, 'icons.svg')
+def static_url(filename):
+    """URL ของไฟล์ใน static/ พร้อมเลขเวอร์ชัน (เปลี่ยนไฟล์แล้ว browser โหลดใหม่เอง ไม่ค้างของเก่าหลัง deploy)"""
     try:
-        version = int(os.stat(path).st_mtime)
+        version = int(os.stat(os.path.join(STATIC_DIR, filename)).st_mtime)
     except OSError:
         version = 0
-    return url_for('static', filename='icons.svg', v=version)
+    return url_for('static', filename=filename, v=version)
+
+
+def sprite_url():
+    return static_url('icons.svg')
 
 
 def icon(name, cls=''):

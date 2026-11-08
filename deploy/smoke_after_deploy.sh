@@ -48,6 +48,12 @@ else
     pass "หน้า login ไม่มีข้อมูลภายใน" "-"
 fi
 
+# ไฟล์ static (หน้า login ต้องใช้) ต้องเปิดได้ก่อนล็อกอิน — ถ้าไม่ได้ ไอคอน/สไตล์/โลโก้จะหายทั้งระบบ
+for p in static/app.css static/appearance.js static/icons.svg static/logo_ck.png; do
+    code=$(status "$base/$p")
+    [ "$code" = "200" ] && pass "/$p (ไม่ล็อกอิน)" "$code" || nope "/$p" "$code" "ต้องได้ 200"
+done
+
 # ทุกหน้าต้องพาไป login (302) และทุก API ต้องตอบ 401 เมื่อไม่ล็อกอิน
 for p in "" dashboard backfill reminders logs debug config/tokens config/database config/api account/password; do
     code=$(status "$base/$p")
