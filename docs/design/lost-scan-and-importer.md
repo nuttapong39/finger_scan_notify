@@ -109,6 +109,8 @@ ADR: [0002 Scan importer แยก process และใช้ Device sequence �
   ส่วนกฎการเติมคอลัมน์ของตัวเดิม (Q26) จะถอดตอนเริ่มช่วง B ด้วยการเทียบแถวต้นทางกับแถวที่ตัวเดิมเขียน
 
 ## ช่วง B — Scan importer (`scan_importer/`, dashboard-srv)
+> ออกแบบเพิ่ม (ผู้เขียนคนเดียว, กักแถวเก่า, ปล่อยด้วย dry-run, แกนตรรกะ `scan_importer/plan.py`): `docs/design/scan-importer-single-writer.md`
+
 - ทุก 2 วินาที: `SELECT … FROM ZFP_TimeInOut WHERE ID_TimeInout > @ล่าสุด ORDER BY ID_TimeInout` (เป็นชุด)
   → เติมคอลัมน์ตามกฎจากช่วง C → บันทึกเป็นชุดใน transaction → ขยับจุดล่าสุดหลังบันทึกสำเร็จเท่านั้น
 - กันซ้ำด้วย `MACHIN_SCAN_ID` (unique index หลังล้างแถวซ้ำ) → รันซ้ำ/เติมย้อนได้ปลอดภัย
