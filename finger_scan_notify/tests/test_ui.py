@@ -143,6 +143,28 @@ def test_every_page_but_login_has_the_appearance_toggle_and_sets_it_before_first
         assert '<html lang="th">' in html, name            # server ไม่บังคับโหมด → ค่าเริ่มต้นตัดสินที่ appearance.js
 
 
+def _appearance_after_loading(js, stored):
+    """รัน appearance.js จริงด้วย Node กับ DOM จำลอง แล้วคืนค่า data-appearance ที่ตั้งได้ (ไม่มี Node = ข้าม)"""
+    import shutil
+    import subprocess
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('ไม่มี Node')
+    harness = ("var attrs = {}; var store = %s;"
+               "global.localStorage = { getItem: function () { return store; }, setItem: function () {} };"
+               "global.document = { documentElement: { setAttribute: function (k, v) { attrs[k] = v; }, getAttribute: function (k) { return attrs[k]; } },"
+               " addEventListener: function () {}, getElementById: function () { return null; } };"
+               "%s; console.log(attrs['data-appearance']);") % (stored, js)
+    return subprocess.run([node, '-e', harness], capture_output=True, text=True, timeout=20).stdout.strip()
+
+
+@pytest.mark.parametrize('stored, expected', [('null', 'cyber'), ("'dark'", 'cyber'), ("'cyber'", 'cyber'),
+                                              ("'light'", 'light'), ("'weird'", 'cyber')])
+def test_appearance_script_really_maps_stored_values(admin_client, stored, expected):
+    js = admin_client.get('/static/appearance.js').get_data(as_text=True)
+    assert _appearance_after_loading(js, stored) == expected
+
+
 def test_appearance_script_defaults_to_cyber_reads_the_old_dark_value_and_only_accepts_light(admin_client):
     js = admin_client.get('/static/appearance.js').get_data(as_text=True)
     assert "'cyber'" in js and "'light'" in js
@@ -159,6 +181,7 @@ def test_stylesheet_has_light_as_root_and_cyber_as_the_only_alternative(admin_cl
     assert '[data-appearance="dark"]' not in css
     assert re.search(r':root\s*\{', css)
     assert '[data-appearance="light"]' not in css       # มีแค่ สว่าง (ค่า :root) กับ Cyber
+    assert re.search(r'--shadow:\s*none', css)           # หน้าข้อมูลไม่มีเงา
 
 
 def test_cyber_overrides_every_color_token_that_light_defines(admin_client):
@@ -251,9 +274,7 @@ def test_nginx_does_not_block_the_static_assets():
 
 def test_css_js_and_logo_urls_carry_a_version_so_browsers_do_not_keep_stale_files(login_page):
     for name in ('app.css', 'logo_ck.png', 'icons.svg'):
-        pattern = rf'/static/{re.escape(name)}\?v=\d+' if name != 'icons.svg' else None
-        if pattern:
-            assert re.search(pattern, login_page), name
+        assert re.search(rf'/static/{re.escape(name)}\?v=\d+', login_page), name
     # sprite ถูกเรียกผ่าน <use> ซึ่งอยู่ในทุกหน้าที่มีไอคอน
     assert re.search(r'icons\.svg\?v=\d+#', login_page)
 
@@ -263,3 +284,11 @@ def test_post_deploy_smoke_checks_the_static_files_through_nginx():
     smoke = (pathlib.Path(__file__).parents[2] / 'deploy' / 'smoke_after_deploy.sh').read_text(encoding='utf-8')
     for name in ('app.css', 'appearance.js', 'icons.svg', 'logo_ck.png'):
         assert f'static/{name}' in smoke
+
+
+def test_a_locked_out_visitor_sees_the_thai_wait_message_inside_the_cyber_page(anon_client, monkeypatch):
+    import auth
+    monkeypatch.setattr(auth, 'locked_seconds', lambda ip: 120)
+    r = anon_client.post('/login', data={'username': 'admin', 'password': 'x'})
+    html = r.get_data(as_text=True)
+    assert r.status_code == 429 and 'ลองใหม่ในอีก' in html and 'data-appearance="cyber"' in html

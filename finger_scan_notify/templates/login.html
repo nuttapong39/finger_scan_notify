@@ -46,7 +46,7 @@
   <div class="login-shell">
     <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
     <div class="beam">
-      <form class="card" method="POST" action="/login" autocomplete="off" id="loginForm">
+      <form class="card" method="POST" action="/login" id="loginForm">
         <div class="bar">
           <i class="d r"></i><i class="d y"></i><i class="d g"></i>
           <span>operator@ckh:~$ ./login</span>
@@ -88,7 +88,7 @@
 
           <button type="submit" class="btn" id="loginBtn">
             <span class="btn-idle">{{ icon('log-in') }} เข้าสู่ระบบ</span>
-            <span class="btn-busy">{{ icon('loader-circle', 'spin') }} กำลังตรวจสอบ...</span>
+            <span class="btn-busy">{{ icon('loader-circle', 'ic-spin') }} กำลังตรวจสอบ...</span>
           </button>
 
           <p class="hint">ลืมรหัสผ่าน? ให้ผู้ดูแล Server รัน<br><code>$ python manage.py reset-admin</code></p>

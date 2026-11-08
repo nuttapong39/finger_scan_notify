@@ -119,7 +119,7 @@ finger_scan_notify/
 ├── requirements.txt / requirements-dev.txt
 ├── run.sh / run.bat    # Startup script (เครื่องพัฒนา)
 ├── tests/              # pytest (ไม่ต่อ MySQL จริง)
-├── static/             # เสิร์ฟโดยแอปเอง (ไม่พึ่ง CDN): app.css (token สว่าง/มืด), appearance.js,
+├── static/             # เสิร์ฟโดยแอปเอง (ไม่พึ่ง CDN): app.css (token สว่าง/Cyber), login.css/login.js (หน้า login), fonts/ (OFL), appearance.js,
 │                       #   icons.svg (sprite — สร้างด้วย ../tools/build_icons.py อย่าแก้มือ), logo_ck.png
 ├── templates/
 │   ├── base.html       # Base layout + sidebar (สไตล์อยู่ static/app.css)
@@ -218,9 +218,9 @@ python -m pytest tests
 
 รายละเอียดการออกแบบ: [`docs/design/phase2-reminder-backfill.md`](../docs/design/phase2-reminder-backfill.md) · ศัพท์: [`CONTEXT.md`](../CONTEXT.md)
 
-## หน้าตาเว็บ (Appearance สว่าง/มืด + ไอคอน)
-- ค่าเริ่มต้น **สว่าง**; ปุ่มพระจันทร์/พระอาทิตย์สลับเป็นมืด จำต่อ browser ไม่ตามค่าของระบบปฏิบัติการ
-- สีทุกจุดอ้าง token ใน `static/app.css` (`:root` = สว่าง, `[data-appearance="dark"]` = มืด) — ไม่ใส่ hex ในหน้า ยกเว้นตัวอย่างข้อความ/การ์ด LINE ในหน้า MOPH Alert API (ใช้สีของ LINE ตายตัว)
+## หน้าตาเว็บ (Appearance Cyber/สว่าง + ไอคอน)
+- ค่าเริ่มต้น **Cyber** (ADR 0003); ปุ่มพระจันทร์/พระอาทิตย์สลับเป็นสว่าง จำต่อ browser ไม่ตามค่าของระบบปฏิบัติการ ; หน้า login เป็น Cyber เสมอ (ปุ่ม FX ปิดเอฟเฟกต์ได้)
+- สีทุกจุดอ้าง token ใน `static/app.css` (`:root` = สว่าง, `[data-appearance="cyber"]` = Cyber) — ไม่ใส่ hex ในหน้า ยกเว้นตัวอย่างข้อความ/การ์ด LINE ในหน้า MOPH Alert API (ใช้สีของ LINE ตายตัว)
 - ไอคอน: Lucide (ISC) และโลโก้แบรนด์ Simple Icons (CC0, ชื่อขึ้นต้น `brand-`) เรียกด้วย `{{ icon('ชื่อ') }}` ใน template หรือ `icon('ชื่อ')` ใน JS
 - เพิ่มไอคอนใหม่: เรียก `icon('ชื่อ')` แล้วสร้าง sprite ใหม่
   ```

@@ -4,8 +4,8 @@
 แทนที่บางส่วนของ `docs/design/ui-minimal-light-dark.md` (ค่าเริ่มต้น, ข้อ "ตัดเงา glow")
 
 ## ไฟล์อ้างอิง
-- `finger_scan_notify/login1.html` — **ไม่ครบ** (ตัดจบที่บรรทัด 291 กลางคอมเมนต์ ไม่มีฟอร์ม/การ์ด/สคริปต์) ใช้เป็นตัวอย่าง CSS และ HUD เท่านั้น
-- `finger_scan_notify/login2.html` — ครบ ใช้เป็นโครงหลัก แต่เป็นเทมเพลต Django (`{% load static %}`, `{% csrf_token %}`, `form.username`, `messages`, `request.META`) ต้องแปลงเป็น Jinja/Flask
+- `docs/design/reference/login1.html` — **ไม่ครบ** (ตัดจบที่บรรทัด 291 กลางคอมเมนต์ ไม่มีฟอร์ม/การ์ด/สคริปต์) ใช้เป็นตัวอย่าง CSS และ HUD เท่านั้น
+- `docs/design/reference/login2.html` — ครบ ใช้เป็นโครงหลัก แต่เป็นเทมเพลต Django (`{% load static %}`, `{% csrf_token %}`, `form.username`, `messages`, `request.META`) ต้องแปลงเป็น Jinja/Flask
   ฟอร์มจริง: `POST /login` ฟิลด์ `username`, `password`, `next` ; ตัวแปรเทมเพลต `next`, `error` ; ไม่มี CSRF token ; ข้อผิดพลาด 401/429 render หน้าเดิมพร้อม `error`
 
 ## การตัดสินใจ (Q1–Q12)
@@ -25,7 +25,7 @@
 
 ## เฟส 1 — หน้า Login + token
 **ไฟล์**
-- ใหม่: `static/fonts/*.woff2` + `LICENSE-ofl`, `static/login.css`, `static/login.js`
+- ใหม่: `static/fonts/*.woff2` (13 ไฟล์ รวมราว 190 KB) + `LICENSE-<ฟอนต์>` 3 ไฟล์ ; ไฟล์อ้างอิง login1/login2 ย้ายไป `docs/design/reference/` (ยังอ้าง Google Fonts จึงไม่อยู่ในแพ็กเกจแอป), `static/login.css`, `static/login.js`
 - แก้: `static/app.css` (token Cyber แทน `[data-appearance="dark"]`, `@font-face`), `static/appearance.js` (ค่าเริ่มต้น cyber, แปลง `dark`→`cyber`), `templates/login.html` (แปลงจาก login2), `templates/_head_assets.html`, `templates/_appearance_toggle.html` (เปลี่ยนไอคอน/ข้อความ "Cyber"), `tools/` ถ้ามีสคริปต์ที่อ้าง `dark`
 - ไม่แตะ: `auth.py` (ฟอร์ม/ฟิลด์/`next`/ล็อกเอาต์ไม่เปลี่ยน)
 

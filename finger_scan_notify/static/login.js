@@ -69,8 +69,8 @@
 
   /* ── terminal / hex จำลอง ── */
   var term = $('termLog'), hex = $('hexStream');
-  var logs = [['ok', 'load module render'], ['inf', 'mount /static'], ['ok', 'check session store'], ['inf', 'wait credentials'],
-              ['ok', 'render demo stream'], ['inf', 'idle']];
+  var logs = [['ok', 'demo: render frame'], ['inf', 'demo: idle'], ['ok', 'demo: draw glyphs'], ['inf', 'demo: no real data'],
+              ['ok', 'demo: scan sweep'], ['inf', 'demo: standby']];
   function line(cls, text) {
     var r = document.createElement('div'); r.className = 'row';
     var t = document.createElement('span'); t.className = cls; t.textContent = '[' + (cls === 'ok' ? ' ok ' : 'info') + '] ';
