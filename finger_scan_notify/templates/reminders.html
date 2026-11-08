@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}เตือนยังไม่สแกน{% endblock %}
-{% block page_title %}⏰ เตือนยังไม่สแกน{% endblock %}
+{% block page_title %}{{ icon('alarm-clock', 'ic-lg') }} เตือนยังไม่สแกน{% endblock %}
 {% block page_sub %}ถึงเวลาที่ตั้งแล้วยังไม่พบการสแกน → ส่งการ์ดสีส้มเตือน (วันละครั้งต่อคน · ข้ามเสาร์-อาทิตย์ วันหยุดราชการ และคนที่มีใบลา){% endblock %}
 
 {% block head %}
@@ -20,16 +20,17 @@
 
 {% block content %}
 <div class="alert alert-info" style="margin-bottom:20px;">
-  ℹ️ ยังไม่รองรับคนเข้าเวร (เช่น พยาบาล) ที่วันหยุดไม่ตรงเสาร์-อาทิตย์ — <strong>อย่าเปิดรับการเตือนให้กลุ่มนี้</strong> จนกว่าจะเชื่อมตารางเวร (phase ถัดไป)
-  · สีของการ์ดปรับได้ที่ Dashboard → 🎨 ปรับแต่ง Flex card
+  {{ icon('info') }}
+  <span>ยังไม่รองรับคนเข้าเวร (เช่น พยาบาล) ที่วันหยุดไม่ตรงเสาร์-อาทิตย์ — <strong>อย่าเปิดรับการเตือนให้กลุ่มนี้</strong> จนกว่าจะเชื่อมตารางเวร (phase ถัดไป)
+  · สีของการ์ดปรับได้ที่ Dashboard → ปรับแต่ง Flex card</span>
 </div>
 
 <div class="rm-grid">
-  {% for kind, title, icon in [('checkin', 'เตือนยังไม่สแกนเข้างาน', '🟠'), ('checkout', 'เตือนยังไม่สแกนออกงาน', '🟡')] %}
+  {% for kind, title in [('checkin', 'เตือนยังไม่สแกนเข้างาน'), ('checkout', 'เตือนยังไม่สแกนออกงาน')] %}
   {% set c = cfg[kind] %}
   <div class="card" data-kind="{{ kind }}">
     <div class="rm-head">
-      <div class="card-title">{{ icon }} {{ title }}</div>
+      <div class="card-title">{{ icon('alarm-clock', 'c-amber') }} {{ title }}</div>
       <label class="toggle"><input type="checkbox" data-f="enabled" {{ 'checked' if c.enabled else '' }}><span class="toggle-slider"></span></label>
     </div>
     <div class="rm-times">
@@ -59,8 +60,8 @@
 </div>
 
 <div style="display:flex; gap:10px; align-items:center; margin-bottom:24px; flex-wrap:wrap;">
-  <button class="btn btn-primary" id="rm-save">💾 บันทึกการตั้งค่า</button>
-  <button class="btn btn-outline" id="rm-preview">👀 ถ้าเตือนตอนนี้ จะเตือนใครบ้าง</button>
+  <button class="btn btn-primary" id="rm-save">{{ icon('save') }} บันทึกการตั้งค่า</button>
+  <button class="btn btn-outline" id="rm-preview">{{ icon('eye') }} ถ้าเตือนตอนนี้ จะเตือนใครบ้าง</button>
   <span class="rm-status" id="rm-loop">ตัวตรวจ: {{ 'ตรวจล่าสุด ' ~ status.last_run if status.last_run else 'ยังไม่เริ่ม (เริ่มเมื่อรันแอปด้วย python app.py)' }}{{ ' · ผิดพลาด: ' ~ status.last_error if status.last_error else '' }}</span>
 </div>
 <div class="card rm-preview" id="rm-preview-box" style="display:none; margin-bottom:24px;"></div>
@@ -71,7 +72,7 @@
       <div class="card-title">ผู้รับการเตือน (เปิดเป็นรายคน)</div>
       <span class="rm-status" id="rm-count"></span>
     </div>
-    <input type="text" id="rm-search" class="form-control" placeholder="🔍 ค้นหาชื่อ / หน่วยงาน" style="margin-bottom:8px;">
+    <input type="text" id="rm-search" class="form-control" placeholder="ค้นหาชื่อ / หน่วยงาน" style="margin-bottom:8px;">
     <div style="display:flex; gap:8px; margin-bottom:8px;">
       <button class="btn btn-outline btn-sm" data-bulk="1">เปิดทั้งหมดที่แสดง</button>
       <button class="btn btn-outline btn-sm" data-bulk="0">ปิดทั้งหมดที่แสดง</button>
@@ -97,7 +98,7 @@
   <div class="card">
     <div class="rm-head">
       <div class="card-title">การเตือนวันนี้</div>
-      <button class="btn btn-outline btn-sm" id="rm-refresh">🔄</button>
+      <button class="btn btn-outline btn-sm" id="rm-refresh" title="รีเฟรช" aria-label="รีเฟรช">{{ icon('refresh-cw') }}</button>
     </div>
     <div class="table-wrap rm-people">
       <table>
@@ -114,7 +115,8 @@
 (function () {
   const $ = (id) => document.getElementById(id);
   const KIND = { checkin: 'เข้างาน', checkout: 'ออกงาน' };
-  const STATUS = { success: '✅ ส่งแล้ว', error: '❌ ล้มเหลว', cancelled: '↩️ ยกเลิก (สแกนแล้ว)', claimed: '⏳ กำลังส่ง' };
+  const STATUS = { success: [() => icon('circle-check'), 'ส่งแล้ว'], error: [() => icon('circle-x'), 'ล้มเหลว'],
+                   cancelled: [() => icon('undo-2'), 'ยกเลิก (สแกนแล้ว)'], claimed: [() => icon('loader-circle'), 'กำลังส่ง'] };
   const REASON = { disabled: 'ปิดอยู่', outside_window: 'อยู่นอกช่วงเวลา', weekend: 'วันเสาร์-อาทิตย์',
                    holiday: 'วันหยุดราชการ', error: 'ผิดพลาด (ไม่เตือน)' };
   const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -171,6 +173,11 @@
   count();
 
   // ── log วันนี้ ──
+  function statusCell(status) {
+    const td = el('td', null, 'st-' + status), s = STATUS[status];
+    if (s) td.append(s[0](), ' ', s[1]); else td.textContent = status;
+    return td;
+  }
   function loadLog() {
     fetch('/api/reminders/today').then(r => r.json()).then(d => {
       const tb = $('rm-log'); tb.replaceChildren();
@@ -178,7 +185,7 @@
       d.log.forEach(r => {
         const tr = el('tr');
         tr.append(el('td', (r.created_local || '').slice(11, 16)), el('td', r.person_name || r.person_id),
-                  el('td', KIND[r.kind] || r.kind), el('td', STATUS[r.status] || r.status, 'st-' + r.status));
+                  el('td', KIND[r.kind] || r.kind), statusCell(r.status));
         if (r.status === 'error') tr.lastChild.title = `HTTP ${r.http_code} ${r.response || ''}`;
         tb.appendChild(tr);
       });

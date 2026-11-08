@@ -1,18 +1,18 @@
 {% extends "base.html" %}
 {% block title %}ตั้งค่าฐานข้อมูล{% endblock %}
-{% block page_title %}ตั้งค่าการเชื่อมต่อฐานข้อมูล{% endblock %}
+{% block page_title %}{{ icon('database', 'ic-lg') }} ตั้งค่าการเชื่อมต่อฐานข้อมูล{% endblock %}
 {% block page_sub %}MySQL / MariaDB — hosoffice (อ่านอย่างเดียว){% endblock %}
 
 {% block content %}
 <div style="max-width: 640px;">
   <div class="card" style="margin-bottom:20px;">
     <div class="card-header">
-      <div class="card-title">🗄️ Database Connection</div>
+      <div class="card-title">{{ icon('brand-mysql') }} Database Connection · hosoffice</div>
     </div>
 
     <form method="POST" id="db-form">
       {% if env_conn %}
-      <div class="alert alert-info">🔒 ค่าการเชื่อมต่อตั้งค่าใน .env บน Server — แก้ที่หน้านี้ไม่ได้ (ดู SERVER-SETUP-ALMALINUX.md)</div>
+      <div class="alert alert-info">{{ icon('lock') }} <span>ค่าการเชื่อมต่อตั้งค่าใน .env บน Server — แก้ที่หน้านี้ไม่ได้ (ดู SERVER-SETUP-ALMALINUX.md)</span></div>
       <div class="grid-2">
         <div class="form-group">
           <label class="form-label">Host / IP</label>
@@ -73,10 +73,10 @@
 
       <div style="display:flex; gap:12px; flex-wrap:wrap;">
         <button type="button" class="btn btn-outline" onclick="testConnection(event)">
-          🔌 ทดสอบการเชื่อมต่อ
+          {{ icon('plug-zap') }} ทดสอบการเชื่อมต่อ
         </button>
         <button type="submit" name="save" class="btn btn-primary">
-          💾 บันทึกการตั้งค่า
+          {{ icon('save') }} บันทึกการตั้งค่า
         </button>
       </div>
     </form>
@@ -86,17 +86,25 @@
   </div>
 
   <!-- Info card -->
-  <div class="card" style="background:rgba(29,140,248,0.05); border-color:rgba(29,140,248,0.3);">
+  <div class="card" style="margin-bottom:20px;">
     <div style="font-size:13px; color:var(--text-secondary); line-height:1.8;">
-      <strong style="color:var(--accent-blue);">ℹ️ ข้อมูลตาราง fingle_scan</strong><br>
+      <strong>{{ icon('info') }} ข้อมูลตาราง fingle_scan</strong><br>
       <ul style="margin-top:8px; padding-left:20px;">
-        <li><code style="color:var(--accent-cyan);">PERSON_ID</code> — รหัสบุคลากร (ใช้ match กับ Token)</li>
-        <li><code style="color:var(--accent-cyan);">SCAN_DATE_TIME</code> — วันเวลาสแกน</li>
-        <li><code style="color:var(--accent-cyan);">SCAN_TYPE</code> — 0, 4, IN = เข้างาน · 1, 5, OUT = ออกงาน · อื่น ๆ ไม่ส่ง</li>
-        <li><code style="color:var(--accent-cyan);">HR_FULLNAME</code> — ชื่อ-สกุลบุคลากร</li>
-        <li><code style="color:var(--accent-cyan);">ISINPUT</code> — ประเภทการบันทึก (FACESCAN ฯลฯ)</li>
+        <li><code>PERSON_ID</code> — รหัสบุคลากร (ใช้ match กับ Token)</li>
+        <li><code>SCAN_DATE_TIME</code> — วันเวลาสแกน</li>
+        <li><code>SCAN_TYPE</code> — 0, 4, IN = เข้างาน · 1, 5, OUT = ออกงาน · อื่น ๆ ไม่ส่ง</li>
+        <li><code>HR_FULLNAME</code> — ชื่อ-สกุลบุคลากร</li>
+        <li><code>ISINPUT</code> — ประเภทการบันทึก (FACESCAN ฯลฯ)</li>
       </ul>
       ทุกการเชื่อมต่อถูกบังคับเป็น <code>READ ONLY</code> — ระบบนี้ไม่เขียน hosoffice
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="margin-bottom:8px;">{{ icon('brand-sqlite') }} ข้อมูลของแอป · SQLite</div>
+    <div style="font-size:13px; color:var(--text-secondary); line-height:1.8;">
+      Token, Log, Theme ของ Flex card, ตำแหน่ง scan ล่าสุด และบัญชี admin เก็บในไฟล์
+      <code>data/app_config.db</code> บนเครื่องที่รันแอป — สำรองด้วย <code>manage.py backup</code> (cron ทำให้ทุกคืน)
     </div>
   </div>
 </div>
@@ -109,9 +117,9 @@ function testConnection(ev) {
   const data = new FormData(form);
   data.append('test', '1');
 
-  const btn = ev.target;
+  const btn = ev.currentTarget, original = [...btn.childNodes];
   btn.disabled = true;
-  btn.textContent = '⏳ กำลังทดสอบ...';
+  setIconText(btn, 'loader-circle', 'กำลังทดสอบ...', 'ic-spin');
 
   const show = (ok, text) => {
     const el = document.getElementById('test-result');
@@ -119,7 +127,7 @@ function testConnection(ev) {
     el.replaceChildren();
     const box = document.createElement('div');
     box.className = 'alert ' + (ok ? 'alert-success' : 'alert-error');
-    box.textContent = (ok ? '✅ ' : '❌ ') + text;
+    setIconText(box, ok ? 'circle-check' : 'circle-x', text);
     el.appendChild(box);
   };
 
@@ -127,7 +135,7 @@ function testConnection(ev) {
     .then(r => r.json())
     .then(d => show(d.success, d.message))
     .catch(() => show(false, 'เกิดข้อผิดพลาด'))
-    .finally(() => { btn.disabled = false; btn.textContent = '🔌 ทดสอบการเชื่อมต่อ'; });
+    .finally(() => { btn.disabled = false; btn.replaceChildren(...original); });
 }
 </script>
 {% endblock %}

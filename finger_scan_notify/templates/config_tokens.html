@@ -1,9 +1,20 @@
 {% extends "base.html" %}
 {% block title %}จัดการ Token{% endblock %}
-{% block page_title %}จัดการ Token / Keys บุคลากร{% endblock %}
+{% block page_title %}{{ icon('key-round', 'ic-lg') }} จัดการ Token / Keys บุคลากร{% endblock %}
 {% block page_sub %}รองรับ Line Notify และ MOPH Alert{% endblock %}
 {% block topbar_actions %}
-  <button class="btn btn-primary btn-sm" onclick="openAddModal()">➕ เพิ่ม Token</button>
+  <button class="btn btn-primary btn-sm" onclick="openAddModal()">{{ icon('plus') }} เพิ่ม Token</button>
+{% endblock %}
+
+{% block head %}
+<style>
+.prov-opt { position:relative; flex:1; cursor:pointer; border-radius:8px; padding:12px 14px; background:var(--bg-input); border:1px solid var(--border-light); }
+.prov-opt.selected { border-color:var(--accent-blue); background:var(--tint-blue); }
+.prov-opt input { position:absolute; opacity:0; pointer-events:none; }
+.prov-body { display:flex; flex-direction:column; gap:2px; }
+.prov-name { font-weight:700; margin-top:4px; }
+.prov-sub { font-size:11.5px; color:var(--text-muted); }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -11,46 +22,44 @@
 {% set active_count   = tokens|selectattr('active','equalto',1)|list|length %}
 {% set line_count     = tokens|selectattr('provider','equalto','LINE_NOTIFY')|list|length %}
 {% set moph_count     = tokens|selectattr('provider','equalto','MOPH_ALERT')|list|length %}
-<div style="display:flex; gap:16px; margin-bottom:24px; flex-wrap:wrap;">
-  <div class="stat-card blue" style="flex:1; min-width:130px;">
-    <div class="stat-icon">🔑</div>
+<div class="stats-grid">
+  <div class="stat-card blue">
+    <div class="stat-icon">{{ icon('key-round') }}</div>
     <div class="stat-value">{{ tokens|length }}</div>
     <div class="stat-label">Token ทั้งหมด</div>
   </div>
-  <div class="stat-card green" style="flex:1; min-width:130px;">
-    <div class="stat-icon">✅</div>
+  <div class="stat-card green">
+    <div class="stat-icon">{{ icon('circle-check') }}</div>
     <div class="stat-value">{{ active_count }}</div>
     <div class="stat-label">เปิดใช้งาน</div>
   </div>
-  <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius);
-              padding:16px 20px; flex:1; min-width:130px; border-top:3px solid #00BA7C;">
-    <div style="font-size:24px; margin-bottom:6px;">💚</div>
-    <div style="font-size:28px; font-weight:700; font-family:var(--font-mono); color:#00BA7C;">{{ line_count }}</div>
-    <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">Line Notify</div>
+  <div class="stat-card">
+    <div class="stat-icon c-line">{{ icon('brand-line') }}</div>
+    <div class="stat-value">{{ line_count }}</div>
+    <div class="stat-label">Line Notify</div>
   </div>
-  <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius);
-              padding:16px 20px; flex:1; min-width:130px; border-top:3px solid #0891B2;">
-    <div style="font-size:24px; margin-bottom:6px;">🏥</div>
-    <div style="font-size:28px; font-weight:700; font-family:var(--font-mono); color:#0891B2;">{{ moph_count }}</div>
-    <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">MOPH Alert</div>
+  <div class="stat-card">
+    <div class="stat-icon">{{ icon('hospital') }}</div>
+    <div class="stat-value">{{ moph_count }}</div>
+    <div class="stat-label">MOPH Alert</div>
   </div>
 </div>
 
 <!-- Provider note for MOPH Alert HTTP 200 issue -->
 <div class="alert alert-info" style="margin-bottom:20px;">
   <div>
-    <strong>💡 หมายเหตุ MOPH Alert:</strong>
+    {{ icon('lightbulb') }} <strong>หมายเหตุ MOPH Alert:</strong>
     ถ้า HTTP 200 แต่ไม่ได้รับแจ้งเตือน — ผู้รับต้องเข้าไป <strong>Subscribe / Follow</strong> ช่องทางใน MOPH Alert App ก่อน
-    หรือลองเปลี่ยนมาใช้ <strong style="color:#00BA7C;">Line Notify</strong> ซึ่งใช้งานได้ง่ายกว่าและทำงานได้ทันที
+    หรือลองเปลี่ยนมาใช้ <strong>Line Notify</strong> ซึ่งใช้งานได้ง่ายกว่าและทำงานได้ทันที
   </div>
 </div>
 
 <!-- Table -->
 <div class="card">
   <div class="card-header">
-    <div class="card-title">🔑 รายการ Token ทั้งหมด</div>
+    <div class="card-title">{{ icon('key-round') }} รายการ Token ทั้งหมด</div>
     <input type="text" id="search-input" class="form-control"
-           placeholder="🔍 ค้นหาชื่อ / กลุ่มงาน..."
+           placeholder="ค้นหาชื่อ / กลุ่มงาน..."
            style="width:240px; padding:6px 12px; font-size:12px;" oninput="filterTable()">
   </div>
   <div class="table-wrap">
@@ -70,14 +79,14 @@
       <tbody id="token-tbody">
         {% for t in tokens %}
         <tr data-id="{{ t.id }}">
-          <td><span style="font-family:var(--font-mono); font-size:13px; font-weight:700; color:var(--accent-cyan);">{{ t.person_id }}</span></td>
-          <td><div style="font-weight:600; color:var(--text-primary);">{{ t.person_name or '-' }}</div></td>
+          <td><span style="font-family:var(--font-mono); font-size:13px; font-weight:600;">{{ t.person_id }}</span></td>
+          <td><span class="person"><span class="avatar">{{ t.person_name|initial }}</span><span style="font-weight:600; color:var(--text-primary);">{{ t.person_name or '-' }}</span></span></td>
           <td><div style="font-size:12px; color:var(--text-secondary);">{{ t.department or '-' }}</div></td>
           <td>
             {% if (t.provider or 'LINE_NOTIFY') == 'LINE_NOTIFY' %}
-              <span class="badge" style="background:rgba(0,186,124,0.15); color:#00BA7C; border:1px solid rgba(0,186,124,0.3);">💚 Line Notify</span>
+              <span class="badge badge-line">{{ icon('brand-line') }} Line Notify</span>
             {% else %}
-              <span class="badge" style="background:rgba(8,145,178,0.15); color:#0891B2; border:1px solid rgba(8,145,178,0.3);">🏥 MOPH Alert</span>
+              <span class="badge badge-moph">{{ icon('hospital') }} MOPH Alert</span>
             {% endif %}
           </td>
           <td>
@@ -94,8 +103,8 @@
           </td>
           <td>
             <div style="display:flex; gap:5px;">
-              {% if t.notify_checkin %}<span class="badge badge-in">🟢</span>{% else %}<span class="badge" style="background:rgba(71,85,105,0.2); color:var(--text-muted); font-size:10px;">🟢ปิด</span>{% endif %}
-              {% if t.notify_checkout %}<span class="badge badge-out">🔴</span>{% else %}<span class="badge" style="background:rgba(71,85,105,0.2); color:var(--text-muted); font-size:10px;">🔴ปิด</span>{% endif %}
+              {% if t.notify_checkin %}<span class="badge badge-in" title="แจ้งเตือนเข้างาน">{{ icon('log-in') }}</span>{% else %}<span class="badge badge-muted" title="ไม่แจ้งเตือนเข้างาน">{{ icon('log-in') }} ปิด</span>{% endif %}
+              {% if t.notify_checkout %}<span class="badge badge-out" title="แจ้งเตือนออกงาน">{{ icon('log-out') }}</span>{% else %}<span class="badge badge-muted" title="ไม่แจ้งเตือนออกงาน">{{ icon('log-out') }} ปิด</span>{% endif %}
             </div>
           </td>
           <td>
@@ -106,17 +115,17 @@
           </td>
           <td>
             <div style="display:flex; gap:5px;">
-              <button class="btn btn-outline btn-sm" onclick='editToken({{ t|tojson }})' title="แก้ไข">✏️</button>
-              <button class="btn btn-outline btn-sm" onclick="testNotify({{ t.id }}, '{{ t.person_name or '' }}')" title="ทดสอบ">🔔</button>
+              <button class="btn btn-outline btn-sm" onclick='editToken({{ t|tojson }})' title="แก้ไข" aria-label="แก้ไข">{{ icon('pencil') }}</button>
+              <button class="btn btn-outline btn-sm" onclick="testNotify({{ t.id }}, '{{ t.person_name or '' }}')" title="ส่งทดสอบ" aria-label="ส่งทดสอบ">{{ icon('bell') }}</button>
               <button class="btn btn-outline btn-sm" style="color:var(--accent-red);"
-                      onclick="deleteToken({{ t.id }}, '{{ t.person_name or t.person_id }}')" title="ลบ">🗑️</button>
+                      onclick="deleteToken({{ t.id }}, '{{ t.person_name or t.person_id }}')" title="ลบ" aria-label="ลบ">{{ icon('trash-2') }}</button>
             </div>
           </td>
         </tr>
         {% else %}
         <tr>
           <td colspan="8" style="text-align:center; padding:48px; color:var(--text-muted);">
-            <div style="font-size:32px; margin-bottom:12px;">🔑</div>
+            <div style="margin-bottom:12px;">{{ icon('key-round', 'ic-xl c-muted') }}</div>
             ยังไม่มีข้อมูล — กด "เพิ่ม Token" เพื่อเริ่มต้น
           </td>
         </tr>
@@ -129,7 +138,7 @@
 <!-- Add/Edit Modal -->
 <div class="modal-backdrop" id="token-modal">
   <div class="modal" style="max-width:560px;">
-    <div class="modal-title" id="modal-title">➕ เพิ่ม Token</div>
+    <div class="modal-title" id="modal-title">{{ icon('plus', 'ic-lg') }} เพิ่ม Token</div>
     <input type="hidden" id="edit-id">
 
     <div class="grid-2">
@@ -153,22 +162,20 @@
     <div class="form-group">
       <label class="form-label">ช่องทางการแจ้งเตือน <span style="color:var(--accent-red);">*</span></label>
       <div style="display:flex; gap:10px;">
-        <label id="lbl-line" style="flex:1; cursor:pointer; border-radius:8px; padding:14px;
-               background:rgba(0,186,124,0.1); border:2px solid #00BA7C;">
+        <label id="lbl-line" class="prov-opt selected">
           <input type="radio" name="f-provider" value="LINE_NOTIFY" checked onchange="switchProvider()">
-          <div style="margin-top:8px;">
-            <div style="font-size:18px;">💚</div>
-            <div style="font-weight:700; color:#00BA7C; margin-top:4px;">Line Notify</div>
-            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">แนะนำ — ใช้ Token จาก notify-bot.line.me</div>
+          <div class="prov-body">
+            {{ icon('brand-line', 'ic-xl c-line') }}
+            <div class="prov-name">Line Notify</div>
+            <div class="prov-sub">แนะนำ — ใช้ Token จาก notify-bot.line.me</div>
           </div>
         </label>
-        <label id="lbl-moph" style="flex:1; cursor:pointer; border-radius:8px; padding:14px;
-               background:var(--bg-base); border:2px solid var(--border-light);">
+        <label id="lbl-moph" class="prov-opt">
           <input type="radio" name="f-provider" value="MOPH_ALERT" onchange="switchProvider()">
-          <div style="margin-top:8px;">
-            <div style="font-size:18px;">🏥</div>
-            <div style="font-weight:700; color:var(--text-secondary); margin-top:4px;">MOPH Alert</div>
-            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">client-key + secret-key</div>
+          <div class="prov-body">
+            {{ icon('hospital', 'ic-xl') }}
+            <div class="prov-name">MOPH Alert</div>
+            <div class="prov-sub">client-key + secret-key</div>
           </div>
         </label>
       </div>
@@ -183,7 +190,7 @@
                style="font-family:var(--font-mono); font-size:12px;">
         <div class="form-hint">
           รับ Token ได้ที่
-          <a href="https://notify-bot.line.me/my/" target="_blank" style="color:var(--accent-cyan);">notify-bot.line.me/my/</a>
+          <a href="https://notify-bot.line.me/my/" target="_blank" rel="noopener">notify-bot.line.me/my/</a>
           → "Generate token"
         </div>
       </div>
@@ -209,17 +216,17 @@
     <div style="display:flex; gap:20px; margin-bottom:20px;">
       <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
         <label class="toggle"><input type="checkbox" id="f-notify-checkin" checked><span class="toggle-slider"></span></label>
-        <span>🟢 เข้างาน</span>
+        <span>{{ icon('log-in', 'c-green') }} เข้างาน</span>
       </label>
       <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
         <label class="toggle"><input type="checkbox" id="f-notify-checkout" checked><span class="toggle-slider"></span></label>
-        <span>🔴 ออกงาน</span>
+        <span>{{ icon('log-out', 'c-red') }} ออกงาน</span>
       </label>
     </div>
 
     <div style="display:flex; gap:10px; justify-content:flex-end;">
       <button class="btn btn-outline" onclick="closeModal()">ยกเลิก</button>
-      <button class="btn btn-primary" onclick="saveToken()">💾 บันทึก</button>
+      <button class="btn btn-primary" onclick="saveToken()">{{ icon('save') }} บันทึก</button>
     </div>
   </div>
 </div>
@@ -232,15 +239,12 @@ function switchProvider() {
   const isLine = v === 'LINE_NOTIFY';
   document.getElementById('fields-line').style.display = isLine ? '' : 'none';
   document.getElementById('fields-moph').style.display = isLine ? 'none' : '';
-  document.getElementById('lbl-line').style.borderColor = isLine ? '#00BA7C' : 'var(--border-light)';
-  document.getElementById('lbl-line').style.background  = isLine ? 'rgba(0,186,124,0.1)' : 'var(--bg-base)';
-  document.getElementById('lbl-moph').style.borderColor = isLine ? 'var(--border-light)' : '#0891B2';
-  document.getElementById('lbl-moph').style.background  = isLine ? 'var(--bg-base)' : 'rgba(8,145,178,0.1)';
-  const nameEl = document.querySelector('label[for="lbl-moph"] div:nth-child(3)');
+  document.getElementById('lbl-line').classList.toggle('selected', isLine);
+  document.getElementById('lbl-moph').classList.toggle('selected', !isLine);
 }
 
 function openAddModal() {
-  document.getElementById('modal-title').textContent = '➕ เพิ่ม Token';
+  setIconText(document.getElementById('modal-title'), 'plus', 'เพิ่ม Token', 'ic-lg');
   ['edit-id','f-person-id','f-person-name','f-department','f-line-token','f-client-key','f-secret-key']
     .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.querySelector('input[name="f-provider"][value="LINE_NOTIFY"]').checked = true;
@@ -251,7 +255,7 @@ function openAddModal() {
 }
 
 function editToken(t) {
-  document.getElementById('modal-title').textContent = '✏️ แก้ไข Token';
+  setIconText(document.getElementById('modal-title'), 'pencil', 'แก้ไข Token', 'ic-lg');
   document.getElementById('edit-id').value       = t.id;
   document.getElementById('f-person-id').value   = t.person_id;
   document.getElementById('f-person-name').value = t.person_name || '';
@@ -315,16 +319,16 @@ function toggleToken(id, active) {
 }
 
 function testNotify(id, name) {
-  showToast(`⏳ กำลังส่งทดสอบ...`, 'info');
+  showToast('กำลังส่งทดสอบ...', 'info');
   fetch(`/api/test-notify/${id}`, {method:'POST'})
     .then(r=>r.json())
     .then(d=>{
       const provider = d.provider || '';
       if (d.success) {
-        showToast(`✅ ส่งสำเร็จ (${provider}) HTTP ${d.http_code}`, 'success');
+        showToast(`ส่งสำเร็จ (${provider}) HTTP ${d.http_code}`, 'success');
       } else {
         const detail = d.response_json ? JSON.stringify(d.response_json) : (d.response_raw||'');
-        showToast(`❌ ล้มเหลว HTTP ${d.http_code}: ${detail.substring(0,80)}`, 'error');
+        showToast(`ล้มเหลว HTTP ${d.http_code}: ${detail.substring(0,80)}`, 'error');
       }
     });
 }

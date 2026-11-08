@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}ตรวจสอบและส่งย้อนหลัง{% endblock %}
-{% block page_title %}🔁 ตรวจสอบและส่งย้อนหลัง{% endblock %}
+{% block page_title %}{{ icon('history', 'ic-lg') }} ตรวจสอบและส่งย้อนหลัง{% endblock %}
 {% block page_sub %}ดูสถานะการส่งของแต่ละ Scan แล้วเลือกส่งย้อนหลัง — "ส่งสำเร็จ" = MOPH Alert รับเรื่องแล้ว (ระบบไม่รู้ว่าเปิดอ่านหรือยัง){% endblock %}
 
 {% block head %}
@@ -16,15 +16,17 @@
 .bf-chip { font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid var(--border-light); color:var(--text-secondary); }
 .st-success { color: var(--accent-green); } .st-error { color: var(--accent-red); }
 .st-skipped { color: var(--accent-amber); } .st-never { color: var(--text-muted); }
-.bf-manual { font-size:10px; padding:1px 6px; border-radius:4px; background:rgba(139,92,246,.15); color:var(--accent-purple); margin-left:4px; }
-.bf-resend td { background: rgba(255,214,10,.06); }
+.bf-manual { font-size:10px; padding:1px 6px; border-radius:4px; background:var(--tint-purple); color:var(--accent-purple); margin-left:4px; }
+.bf-resend td { background: var(--tint-amber); }
+.bf-people .avatar { width:24px; height:24px; font-size:12px; }
+.bf-chip .ic { margin-right:3px; }
 .bf-panel { border:1px solid var(--border-light); border-radius:var(--radius); padding:16px; margin-top:16px; }
 .bf-warn { color: var(--accent-red); font-weight:700; }
 .bf-progress { height:8px; border-radius:4px; background:var(--bg-base); overflow:hidden; margin:10px 0; }
 .bf-progress > div { height:100%; background:var(--accent-blue); width:0; transition:width .3s; }
-.tdp { position:relative; flex:1; min-width:140px; }
+.tdp { position:relative; flex:1; min-width:112px; }
 .tdp-btn { width:100%; text-align:left; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:8px; }
-.tdp-pop { position:absolute; z-index:50; top:calc(100% + 4px); left:0; width:268px; padding:10px; background:var(--bg-surface); border:1px solid var(--border-light); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.45); }
+.tdp-pop { position:absolute; z-index:50; top:calc(100% + 4px); left:0; width:268px; padding:10px; background:var(--bg-surface); border:1px solid var(--border-light); border-radius:10px; box-shadow:0 6px 20px rgba(0,0,0,.18); }
 .tdp-pop[hidden] { display:none; }
 .tdp-head { display:flex; gap:6px; align-items:center; margin-bottom:8px; }
 .tdp-head select { flex:1; min-width:0; padding:4px 6px; background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border); border-radius:6px; font:inherit; font-size:13px; }
@@ -36,7 +38,7 @@
 .tdp-day:hover:not(:disabled) { background:var(--bg-card-hover); }
 .tdp-day:disabled { color:var(--text-muted); opacity:.4; cursor:default; }
 .tdp-day.today { outline:1px solid var(--accent-blue); }
-.tdp-day.sel { background:var(--accent-blue); color:#fff; }
+.tdp-day.sel { background:var(--btn-primary); color:#fff; }
 </style>
 {% endblock %}
 
@@ -60,7 +62,7 @@
     </div>
     <div class="form-group">
       <label class="form-label">บุคลากร (เฉพาะคนที่มี token ที่เปิดใช้งาน)</label>
-      <input type="text" id="bf-search" class="form-control" placeholder="🔍 ค้นหาชื่อ / หน่วยงาน" style="margin-bottom:8px;">
+      <input type="text" id="bf-search" class="form-control" placeholder="ค้นหาชื่อ / หน่วยงาน" style="margin-bottom:8px;">
       <div class="bf-row" style="margin-bottom:8px;">
         <button class="btn btn-outline btn-sm" id="bf-all">เลือกทั้งหมด (ที่แสดง)</button>
         <button class="btn btn-outline btn-sm" id="bf-none">ล้าง</button>
@@ -69,7 +71,7 @@
       <div class="bf-people" id="bf-people">
         {% for p in people %}
         <label data-q="{{ (p.name ~ ' ' ~ p.department)|lower }}">
-          <input type="checkbox" value="{{ p.person_id }}"> {{ p.name }}
+          <input type="checkbox" value="{{ p.person_id }}"> <span class="avatar">{{ p.name|initial }}</span> {{ p.name }}
           <small>{{ p.department }}</small>
         </label>
         {% else %}
@@ -77,7 +79,7 @@
         {% endfor %}
       </div>
     </div>
-    <button class="btn btn-primary" id="bf-check" style="width:100%;">🔍 ตรวจสถานะ</button>
+    <button class="btn btn-primary" id="bf-check" style="width:100%;">{{ icon('search') }} ตรวจสถานะ</button>
   </div>
 
   <!-- ผลลัพธ์ -->
@@ -89,7 +91,7 @@
     <div id="bf-result" style="display:none;">
       <div class="bf-summary" id="bf-summary"></div>
       <div class="form-hint" style="margin-bottom:10px;">
-        ติ๊กให้อัตโนมัติ: ⚪ ไม่เคยส่ง และ ❌ ล้มเหลว · ✅ ส่งสำเร็จแล้ว ติ๊กเองได้ (= ส่งซ้ำ) ·
+        ติ๊กให้อัตโนมัติ: {{ icon('circle') }} ไม่เคยส่ง และ {{ icon('circle-x', 'c-red') }} ล้มเหลว · {{ icon('circle-check', 'c-green') }} ส่งสำเร็จแล้ว ติ๊กเองได้ (= ส่งซ้ำ) ·
         <span class="bf-manual">บันทึกจากคำร้อง</span> = Scan จากคำร้องลืมสแกน ไม่ติ๊กให้อัตโนมัติ
       </div>
       <div class="table-wrap" style="max-height:480px; overflow-y:auto;">
@@ -102,7 +104,7 @@
         </table>
       </div>
       <div class="bf-row" style="margin-top:14px;">
-        <button class="btn btn-amber" id="bf-preview">📋 ดูสรุปก่อนส่ง</button>
+        <button class="btn btn-amber" id="bf-preview">{{ icon('clipboard-list') }} ดูสรุปก่อนส่ง</button>
         <span class="form-hint" id="bf-selected" style="margin:0;"></span>
       </div>
 
@@ -114,7 +116,7 @@
           <input type="text" id="bf-typed-input" class="form-control" autocomplete="off">
         </div>
         <div class="bf-row" style="margin-top:12px;">
-          <button class="btn btn-danger" id="bf-send">📨 ยืนยันส่ง</button>
+          <button class="btn btn-danger" id="bf-send">{{ icon('send') }} ยืนยันส่ง</button>
           <button class="btn btn-outline" id="bf-cancel-confirm">ยกเลิก</button>
         </div>
       </div>
@@ -123,7 +125,7 @@
         <div class="card-title">กำลังส่งย้อนหลัง</div>
         <div class="bf-progress"><div id="bf-bar"></div></div>
         <div id="bf-job-text" style="font-size:13px;"></div>
-        <button class="btn btn-outline btn-sm" id="bf-stop" style="margin-top:8px;">⏹ หยุด</button>
+        <button class="btn btn-outline btn-sm" id="bf-stop" style="margin-top:8px;">{{ icon('square') }} หยุด</button>
       </div>
     </div>
   </div>
@@ -136,7 +138,10 @@
   const $ = (id) => document.getElementById(id);
   const MAX = {{ max_per_job }};
   const CONFIRM_DAYS = {{ confirm_days }};
-  const ST = { success: ['✅', 'ส่งสำเร็จ'], error: ['❌', 'ล้มเหลว'], skipped: ['⏭️', 'ถูกข้าม'], never: ['⚪', 'ไม่เคยส่ง'] };
+  const ST = { success: [() => icon('circle-check'), 'ส่งสำเร็จ'], error: [() => icon('circle-x'), 'ล้มเหลว'],
+               skipped: [() => icon('skip-forward'), 'ถูกข้าม'], never: [() => icon('circle'), 'ไม่เคยส่ง'] };
+  // element + ไอคอนนำหน้า + ข้อความ (ข้อความเป็น text เสมอ)
+  const withIcon = (tag, makeIcon, text, cls) => { const e = el(tag, null, cls); e.append(makeIcon(), ' ', text); return e; };
   const SRC = { live: 'แจ้งเตือนสด', backfill: 'ส่งย้อนหลัง', test: 'ทดสอบ' };
   let rows = [], lastQuery = null, jobTimer = null;
 
@@ -169,7 +174,7 @@
     let viewY, viewM;
     const maxD = fromIso(MAX_ISO);
 
-    function show() { btn.textContent = ''; btn.append(el('span', thaiText(input.value)), el('span', '📅')); }
+    function show() { btn.textContent = ''; btn.append(el('span', thaiText(input.value)), icon('calendar')); }
     function setValue(iso, silent) {
       input.value = iso; show();
       if (!silent && onPick) onPick(iso);
@@ -227,10 +232,10 @@
 
   // ── ช่วงวันที่ ──
   function rangeWarn() {
-    const limit = isoDaysAgo(CONFIRM_DAYS);
-    $('bf-range-warn').textContent = $('bf-from').value && $('bf-from').value < limit
-      ? `⚠️ เกิน ${CONFIRM_DAYS} วัน — ตอนส่งต้องพิมพ์ยืนยัน` : '';
-    $('bf-range-warn').className = 'form-hint' + ($('bf-range-warn').textContent ? ' bf-warn' : '');
+    const limit = isoDaysAgo(CONFIRM_DAYS), box = $('bf-range-warn');
+    const over = $('bf-from').value && $('bf-from').value < limit;
+    if (over) setIconText(box, 'triangle-alert', `เกิน ${CONFIRM_DAYS} วัน — ตอนส่งต้องพิมพ์ยืนยัน`); else box.textContent = '';
+    box.className = 'form-hint' + (over ? ' bf-warn' : '');
   }
   // เลือก "จาก" เกิน "ถึง" → ดัน "ถึง" ตาม / เลือก "ถึง" ก่อน "จาก" → ดึง "จาก" ตาม (ช่วงไม่กลับด้าน)
   thaiDatePicker('bf-from', (iso) => { if ($('bf-to').value < iso) pickers['bf-to'].setValue(iso, true); rangeWarn(); });
@@ -276,7 +281,7 @@
     const counts = {};
     rows.forEach(r => counts[r.status] = (counts[r.status] || 0) + 1);
     $('bf-summary').replaceChildren(el('span', `ทั้งหมด ${rows.length} รายการ`, 'bf-chip'),
-      ...Object.keys(ST).filter(k => counts[k]).map(k => el('span', `${ST[k][0]} ${ST[k][1]} ${counts[k]}`, 'bf-chip st-' + k)));
+      ...Object.keys(ST).filter(k => counts[k]).map(k => withIcon('span', ST[k][0], `${ST[k][1]} ${counts[k]}`, 'bf-chip st-' + k)));
     const tb = $('bf-tbody'); tb.replaceChildren();
     rows.forEach((r, i) => {
       const tr = document.createElement('tr');
@@ -284,14 +289,18 @@
       cb.checked = r.default_checked; cb.disabled = !sendable(r);
       cb.title = !r.has_token ? 'ไม่มี token' : !r.direction ? 'ไม่ทราบประเภทการสแกน' : '';
       const c0 = el('td'); c0.appendChild(cb);
-      const c2 = el('td'); c2.appendChild(el('div', r.name || '-', '')).style.fontWeight = '600';
-      c2.appendChild(el('div', r.department, '')).style.fontSize = '11px';
+      const c2 = el('td'), who = el('div', null, 'person'), whoText = el('div');
+      whoText.appendChild(el('div', r.name || '-', '')).style.fontWeight = '600';
+      whoText.appendChild(el('div', r.department, '')).style.fontSize = '11px';
+      who.append(el('span', initialOf(r.name), 'avatar'), whoText);
+      c2.appendChild(who);
       const c3 = el('td');
-      c3.appendChild(el('span', r.direction === 'in' ? '🟢 ' + r.label : r.direction === 'out' ? '🔴 ' + r.label : '📍 ' + r.label,
-                        'badge ' + (r.direction === 'in' ? 'badge-in' : r.direction === 'out' ? 'badge-out' : 'badge-other')));
+      const dirIcon = r.direction === 'in' ? () => icon('log-in') : r.direction === 'out' ? () => icon('log-out') : () => icon('map-pin');
+      c3.appendChild(withIcon('span', dirIcon, r.label,
+                              'badge ' + (r.direction === 'in' ? 'badge-in' : r.direction === 'out' ? 'badge-out' : 'badge-other')));
       if (r.manual) c3.appendChild(el('span', 'บันทึกจากคำร้อง', 'bf-manual'));
       const c4 = el('td');
-      c4.appendChild(el('div', `${ST[r.status][0]} ${ST[r.status][1]}`, 'st-' + r.status)).style.fontWeight = '600';
+      c4.appendChild(withIcon('div', ST[r.status][0], ST[r.status][1], 'st-' + r.status)).style.fontWeight = '600';
       const meta = [r.source ? SRC[r.source] || r.source : '', r.at ? `บันทึก ${r.at}` : '', r.detail].filter(Boolean).join(' · ');
       if (meta) c4.appendChild(el('div', meta)).style.fontSize = '11px';
       const c1 = el('td', r.datetime); c1.style.fontFamily = 'var(--font-mono)'; c1.style.whiteSpace = 'nowrap';
@@ -332,8 +341,8 @@
       box.appendChild(el('div', `จะส่ง ${body.messages} ข้อความ ถึง ${body.persons} คน` + (body.resend ? ` (ส่งซ้ำ ${body.resend})` : '')))
          .style.fontWeight = '700';
       Object.entries(body.excluded_th || {}).forEach(([k, v]) => box.appendChild(el('div', `ไม่ส่ง: ${k} ${v} รายการ`)));
-      if (body.over_cap) box.appendChild(el('div', `⚠️ เกินเพดาน ${body.max} ข้อความต่อครั้ง — ลดรายการที่เลือกก่อน`, 'bf-warn'));
-      box.appendChild(el('div', 'ผู้รับจะเห็นการ์ดหัวเทา พร้อมข้อความ "📨 ส่งย้อนหลัง · ส่งเมื่อ …" สีแดง', 'form-hint'));
+      if (body.over_cap) box.appendChild(withIcon('div', () => icon('triangle-alert'), `เกินเพดาน ${body.max} ข้อความต่อครั้ง — ลดรายการที่เลือกก่อน`, 'bf-warn'));
+      box.appendChild(el('div', 'ผู้รับจะเห็นการ์ดหัวเทา พร้อมข้อความสีแดง "ส่งย้อนหลัง · ส่งเมื่อ …"', 'form-hint'));
       $('bf-typed').style.display = body.needs_confirm ? '' : 'none';
       $('bf-typed-input').value = '';
       $('bf-send').disabled = !body.messages || body.over_cap;

@@ -4,42 +4,39 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>เข้าสู่ระบบ — Finger Scan Notify</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+{% include "_head_assets.html" %}
 <style>
-:root { --bg:#0a0e17; --card:#1a2234; --border:#2a4a6f; --blue:#1d8cf8; --red:#ff4d6d; --text:#e2e8f0; --muted:#94a3b8; }
-* { box-sizing:border-box; margin:0; padding:0; }
-body { font-family:'Sarabun',sans-serif; background:var(--bg); color:var(--text); min-height:100vh;
-       display:flex; align-items:center; justify-content:center; padding:16px; }
-.card { width:100%; max-width:380px; background:var(--card); border:1px solid var(--border); border-radius:14px;
-        padding:32px 28px; box-shadow:0 20px 60px rgba(0,0,0,.5); }
-.brand { text-align:center; margin-bottom:24px; }
-.brand .hosp { font-size:13px; color:var(--muted); }
-.brand h1 { font-size:22px; margin-top:6px; }
-label { display:block; font-size:13px; color:var(--muted); margin:14px 0 6px; }
-input { width:100%; padding:11px 12px; border-radius:8px; border:1px solid var(--border); background:#111827;
-        color:var(--text); font:inherit; font-size:15px; }
-input:focus { outline:2px solid var(--blue); outline-offset:1px; }
-button { width:100%; margin-top:22px; padding:12px; border:0; border-radius:8px; background:var(--blue);
-         color:#fff; font:inherit; font-size:15px; font-weight:700; cursor:pointer; }
-.error { margin-top:16px; padding:10px 12px; border-radius:8px; font-size:13px; color:var(--red);
-         background:rgba(255,77,109,.1); border:1px solid rgba(255,77,109,.3); }
-.hint { margin-top:18px; font-size:12px; color:var(--muted); text-align:center; line-height:1.6; }
+body { display:flex; align-items:center; justify-content:center; padding:16px; }
+.login-corner { position:fixed; top:16px; right:16px; }
+.login-card { width:100%; max-width:360px; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:32px 28px; }
+.brand { text-align:center; margin-bottom:22px; }
+.brand img { width:64px; height:64px; border-radius:14px; }
+.brand .hosp { font-size:13px; color:var(--text-muted); margin-top:10px; }
+.brand h1 { font-size:20px; margin-top:2px; }
+.login-card .btn { width:100%; margin-top:20px; padding:10px; font-size:15px; }
+.login-card .alert { margin:16px 0 0; }
+.hint { margin-top:18px; font-size:12px; color:var(--text-muted); text-align:center; line-height:1.6; }
 </style>
 </head>
 <body>
-<form class="card" method="POST" action="/login" autocomplete="off">
+<div class="login-corner">{% include "_appearance_toggle.html" %}</div>
+<form class="login-card" method="POST" action="/login" autocomplete="off">
   <div class="brand">
-    <div class="hosp">🏥 โรงพยาบาลเชียงกลาง</div>
+    <img src="{{ url_for('static', filename='logo_ck.png') }}" alt="ตราโรงพยาบาลเชียงกลาง" width="64" height="64">
+    <div class="hosp">โรงพยาบาลเชียงกลาง</div>
     <h1>Finger Scan Notify</h1>
   </div>
   <input type="hidden" name="next" value="{{ next or '' }}">
-  <label for="username">บัญชี</label>
-  <input id="username" name="username" value="admin" autocomplete="username" required>
-  <label for="password">รหัสผ่าน</label>
-  <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
-  {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
-  <button type="submit">เข้าสู่ระบบ</button>
+  <div class="form-group">
+    <label class="form-label" for="username">บัญชี</label>
+    <input class="form-control" id="username" name="username" value="admin" autocomplete="username" required>
+  </div>
+  <div class="form-group" style="margin-bottom:0;">
+    <label class="form-label" for="password">รหัสผ่าน</label>
+    <input class="form-control" id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+  </div>
+  {% if error %}<div class="alert alert-error" role="alert">{{ icon('circle-x') }} <span>{{ error }}</span></div>{% endif %}
+  <button type="submit" class="btn btn-primary">{{ icon('log-in') }} เข้าสู่ระบบ</button>
   <div class="hint">ลืมรหัส: ผู้ดูแล Server รัน <code>manage.py reset-admin</code></div>
 </form>
 </body>

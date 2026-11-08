@@ -13,7 +13,7 @@
 .fx-grid { display:grid; grid-template-columns: minmax(0,1fr) 340px; gap:24px; align-items:start; }
 @media (max-width: 900px) { .fx-grid { grid-template-columns: 1fr; } }
 .fx-group { border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; margin-bottom:14px; }
-.fx-group h4 { font-size:12px; color:var(--text-secondary); margin-bottom:10px; letter-spacing:.3px; }
+.fx-group h4 { font-size:12.5px; color:var(--text-secondary); margin-bottom:10px; display:flex; align-items:center; gap:6px; }
 .fx-colors { display:flex; flex-wrap:wrap; gap:18px; }
 .fx-color { display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--text-secondary); }
 .fx-color input[type=color] { width:56px; height:34px; padding:0; border:1px solid var(--border-light); border-radius:6px; background:none; cursor:pointer; }
@@ -22,19 +22,20 @@
 .fx-row > .form-group { flex:1 1 160px; margin-bottom:0; }
 .fx-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
 .fx-toggle { display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
-.fx-toggle .btn.active { background:var(--accent-blue); color:#fff; border-color:var(--accent-blue); }
+.fx-toggle .btn { gap:6px; }
+.fx-toggle .btn.active { background:var(--tint-blue); color:var(--accent-blue); border-color:var(--accent-blue); }
 .fx-phone { background:#8FA9B8; border-radius:14px; padding:18px 12px; min-height:200px; display:flex; justify-content:center; }
 .fx-err { color:var(--accent-red); font-size:12px; margin-top:8px; min-height:16px; }
 .fx-note { font-size:11px; color:var(--text-muted); margin-top:8px; line-height:1.5; }
 </style>
 
 <details class="card" id="flex-editor" style="margin-top:24px;">
-  <summary class="card-title" style="cursor:pointer;">🎨 ปรับแต่ง Flex card (การ์ดแจ้งเตือนใน LINE)</summary>
+  <summary class="card-title" style="cursor:pointer;">{{ icon('palette') }} ปรับแต่ง Flex card (การ์ดแจ้งเตือนใน LINE)</summary>
   <div class="fx-grid" style="margin-top:16px;">
 
     <div>
       <div class="fx-group">
-        <h4>🟢 เข้างาน — สี gradient ของหัวการ์ด</h4>
+        <h4>{{ icon('log-in', 'c-green') }} เข้างาน — สี gradient ของหัวการ์ด</h4>
         <div class="fx-colors">
           {{ color_field('checkin_start', 'สีเริ่ม') }}
           {{ color_field('checkin_end', 'สีจบ') }}
@@ -42,7 +43,7 @@
         </div>
       </div>
       <div class="fx-group">
-        <h4>🔴 ออกงาน — สี gradient ของหัวการ์ด</h4>
+        <h4>{{ icon('log-out', 'c-red') }} ออกงาน — สี gradient ของหัวการ์ด</h4>
         <div class="fx-colors">
           {{ color_field('checkout_start', 'สีเริ่ม') }}
           {{ color_field('checkout_end', 'สีจบ') }}
@@ -50,7 +51,7 @@
         </div>
       </div>
       <div class="fx-group">
-        <h4>🟠 เตือนยังไม่สแกนเข้างาน</h4>
+        <h4>{{ icon('alarm-clock', 'c-amber') }} เตือนยังไม่สแกนเข้างาน</h4>
         <div class="fx-colors">
           {{ color_field('reminder_in_start', 'สีเริ่ม') }}
           {{ color_field('reminder_in_end', 'สีจบ') }}
@@ -58,7 +59,7 @@
         </div>
       </div>
       <div class="fx-group">
-        <h4>🟡 เตือนยังไม่สแกนออกงาน</h4>
+        <h4>{{ icon('alarm-clock', 'c-amber') }} เตือนยังไม่สแกนออกงาน</h4>
         <div class="fx-colors">
           {{ color_field('reminder_out_start', 'สีเริ่ม') }}
           {{ color_field('reminder_out_end', 'สีจบ') }}
@@ -66,7 +67,7 @@
         </div>
       </div>
       <div class="fx-group">
-        <h4>📨 ส่งย้อนหลัง — header เทา + ข้อความเตือน</h4>
+        <h4>{{ icon('send', 'c-muted') }} ส่งย้อนหลัง — header เทา + ข้อความเตือน</h4>
         <div class="fx-colors">
           {{ color_field('backfill_start', 'สีเริ่ม') }}
           {{ color_field('backfill_end', 'สีจบ') }}
@@ -98,8 +99,8 @@
       </div>
 
       <div class="fx-actions">
-        <button class="btn btn-primary" id="fx-save">💾 บันทึก Theme</button>
-        <button class="btn btn-outline" id="fx-reset">↩ คืนค่าเริ่มต้น</button>
+        <button class="btn btn-primary" id="fx-save">{{ icon('save') }} บันทึก Theme</button>
+        <button class="btn btn-outline" id="fx-reset">{{ icon('undo-2') }} คืนค่าเริ่มต้น</button>
       </div>
       <div class="fx-group" style="margin-top:14px;">
         <h4>ส่งทดสอบเข้า LINE จริง (ใช้ค่าที่ตั้งอยู่ตอนนี้ แม้ยังไม่บันทึก)</h4>
@@ -108,7 +109,7 @@
           <select id="fx-test-token" class="form-control" style="max-width:260px;">
             {% for t in flex_tokens %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
           </select>
-          <button class="btn btn-amber" id="fx-test">📤 ส่งทดสอบ</button>
+          <button class="btn btn-amber" id="fx-test">{{ icon('send') }} ส่งทดสอบ</button>
         </div>
         <div class="form-hint">ข้อความจะถูกส่งถึงบุคลากรที่เลือกจริง (ใช้ข้อมูลสมมติ ตามแบบการ์ดที่กำลังดูตัวอย่างด้านขวา)</div>
         {% else %}
@@ -119,11 +120,11 @@
 
     <div>
       <div class="fx-toggle">
-        <button class="btn btn-outline btn-sm active" data-scan="0" data-variant="scan">🟢 เข้างาน</button>
-        <button class="btn btn-outline btn-sm" data-scan="1" data-variant="scan">🔴 ออกงาน</button>
-        <button class="btn btn-outline btn-sm" data-scan="0" data-variant="backfill">📨 ส่งย้อนหลัง</button>
-        <button class="btn btn-outline btn-sm" data-scan="0" data-variant="remind_in">🟠 เตือนเข้า</button>
-        <button class="btn btn-outline btn-sm" data-scan="0" data-variant="remind_out">🟡 เตือนออก</button>
+        <button class="btn btn-outline btn-sm active" data-scan="0" data-variant="scan">{{ icon('log-in', 'c-green') }} เข้างาน</button>
+        <button class="btn btn-outline btn-sm" data-scan="1" data-variant="scan">{{ icon('log-out', 'c-red') }} ออกงาน</button>
+        <button class="btn btn-outline btn-sm" data-scan="0" data-variant="backfill">{{ icon('send') }} ส่งย้อนหลัง</button>
+        <button class="btn btn-outline btn-sm" data-scan="0" data-variant="remind_in">{{ icon('alarm-clock', 'c-amber') }} เตือนเข้า</button>
+        <button class="btn btn-outline btn-sm" data-scan="0" data-variant="remind_out">{{ icon('alarm-clock', 'c-amber') }} เตือนออก</button>
       </div>
       <div class="fx-phone"><div id="fx-preview"></div></div>
       <div class="fx-err" id="fx-err"></div>

@@ -101,6 +101,7 @@ finger_scan_notify/
 ├── serve.py            # จุดเข้าของ Server: waitress process เดียว (systemd)
 ├── settings.py         # ค่าจาก .env (ความลับ, hosoffice, MONITOR_AUTOSTART)
 ├── auth.py             # ล็อกอิน admin + guard ทุก route
+├── icons.py            # icon('ชื่อ') ใน template (Lucide / Simple Icons) + initial() ตัวอักษรย่อ
 ├── manage.py           # คำสั่งดูแลระบบบน Server
 ├── .env.example        # ต้นแบบ .env (ไฟล์ .env จริง git ไม่เก็บ)
 ├── routes_phase2.py    # หน้า/API ตรวจสอบและส่งย้อนหลัง + เตือนยังไม่สแกน
@@ -116,11 +117,13 @@ finger_scan_notify/
 ├── requirements.txt / requirements-dev.txt
 ├── run.sh / run.bat    # Startup script (เครื่องพัฒนา)
 ├── tests/              # pytest (ไม่ต่อ MySQL จริง)
+├── static/             # เสิร์ฟโดยแอปเอง (ไม่พึ่ง CDN): app.css (token สว่าง/มืด), appearance.js,
+│                       #   icons.svg (sprite — สร้างด้วย ../tools/build_icons.py อย่าแก้มือ), logo_ck.png
 ├── templates/
-│   ├── base.html       # Base layout + sidebar
+│   ├── base.html       # Base layout + sidebar (สไตล์อยู่ static/app.css)
 │   ├── dashboard.html  # Main dashboard (+ _flex_editor.html)
-│   ├── backfill.html   # 🔁 ตรวจสอบและส่งย้อนหลัง
-│   ├── reminders.html  # ⏰ เตือนยังไม่สแกน
+│   ├── backfill.html   # ตรวจสอบและส่งย้อนหลัง (ปฏิทินไทย พ.ศ.)
+│   ├── reminders.html  # เตือนยังไม่สแกน
 │   ├── config_database.html / config_api.html / config_tokens.html
 │   ├── debug.html
 │   └── logs.html
@@ -212,3 +215,14 @@ python -m pytest tests
 - ปุ่ม **ถ้าเตือนตอนนี้ จะเตือนใครบ้าง** = จำลองโดยไม่ส่ง · สีการ์ดปรับที่ Dashboard → 🎨 ปรับแต่ง Flex card
 
 รายละเอียดการออกแบบ: [`docs/design/phase2-reminder-backfill.md`](../docs/design/phase2-reminder-backfill.md) · ศัพท์: [`CONTEXT.md`](../CONTEXT.md)
+
+## หน้าตาเว็บ (Appearance สว่าง/มืด + ไอคอน)
+- ค่าเริ่มต้น **สว่าง**; ปุ่มพระจันทร์/พระอาทิตย์สลับเป็นมืด จำต่อ browser ไม่ตามค่าของระบบปฏิบัติการ
+- สีทุกจุดอ้าง token ใน `static/app.css` (`:root` = สว่าง, `[data-appearance="dark"]` = มืด) — ห้ามใส่ hex ในหน้า
+- ไอคอน: Lucide (ISC) และโลโก้แบรนด์ Simple Icons (CC0, ชื่อขึ้นต้น `brand-`) เรียกด้วย `{{ icon('ชื่อ') }}` ใน template หรือ `icon('ชื่อ')` ใน JS
+- เพิ่มไอคอนใหม่: เรียก `icon('ชื่อ')` แล้วสร้าง sprite ใหม่
+  ```
+  npm pack lucide-static simple-icons        # แตก .tgz ไว้ที่ใดก็ได้
+  python tools/build_icons.py --lucide <lucide>/package/icons --simple-icons <simple-icons>/package/icons
+  ```
+- Dashboard ยังโหลด Chart.js จาก cdnjs (ถ้า Server ออกอินเทอร์เน็ตไม่ได้ กราฟจะไม่แสดง ตัวเลขและตารางยังใช้ได้)

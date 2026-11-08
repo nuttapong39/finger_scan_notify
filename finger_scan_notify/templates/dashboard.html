@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
-{% block page_title %}Dashboard การสแกนเข้า-ออกงาน{% endblock %}
+{% block page_title %}{{ icon('layout-dashboard', 'ic-lg') }} Dashboard การสแกนเข้า-ออกงาน{% endblock %}
 {% block page_sub %}ข้อมูลวันนี้ — {{ today }}{% endblock %}
 {% block topbar_actions %}
   <div id="monitor-control">
-    <button class="btn btn-success btn-sm" id="btn-start" onclick="startMonitor()">▶ เริ่ม Monitor</button>
-    <button class="btn btn-danger btn-sm" id="btn-stop" onclick="stopMonitor()" style="display:none">⏹ หยุด</button>
+    <button class="btn btn-success btn-sm" id="btn-start" onclick="startMonitor()">{{ icon('play') }} เริ่ม Monitor</button>
+    <button class="btn btn-danger btn-sm" id="btn-stop" onclick="stopMonitor()" style="display:none">{{ icon('square') }} หยุด</button>
   </div>
-  <button class="btn btn-outline btn-sm" onclick="refreshDashboard()">🔄 รีเฟรช</button>
+  <button class="btn btn-outline btn-sm" onclick="refreshDashboard()">{{ icon('refresh-cw') }} รีเฟรช</button>
 {% endblock %}
 
 {% block head %}
@@ -18,22 +18,22 @@
 <!-- Stats -->
 <div class="stats-grid">
   <div class="stat-card blue">
-    <div class="stat-icon">👥</div>
+    <div class="stat-icon">{{ icon('users') }}</div>
     <div class="stat-value" id="stat-persons">{{ stats.total_person or 0 }}</div>
     <div class="stat-label">บุคลากรที่สแกนวันนี้</div>
   </div>
   <div class="stat-card amber">
-    <div class="stat-icon">📱</div>
+    <div class="stat-icon">{{ icon('scan-face') }}</div>
     <div class="stat-value" id="stat-total">{{ stats.total_scan or 0 }}</div>
     <div class="stat-label">จำนวนการสแกนทั้งหมด</div>
   </div>
   <div class="stat-card green">
-    <div class="stat-icon">🟢</div>
+    <div class="stat-icon">{{ icon('log-in') }}</div>
     <div class="stat-value" id="stat-checkin">{{ stats.checkin or 0 }}</div>
     <div class="stat-label">เข้างาน</div>
   </div>
   <div class="stat-card red">
-    <div class="stat-icon">🔴</div>
+    <div class="stat-icon">{{ icon('log-out') }}</div>
     <div class="stat-value" id="stat-checkout">{{ stats.checkout or 0 }}</div>
     <div class="stat-label">ออกงาน</div>
   </div>
@@ -42,10 +42,10 @@
 <!-- Monitor status bar -->
 <div id="monitor-bar" style="display:none; margin-bottom:24px;">
   <div class="alert alert-success">
-    🟢 <strong>Monitor กำลังทำงาน</strong> — 
+    {{ icon('activity') }} <span><strong>Monitor กำลังทำงาน</strong> — 
     ตรวจสอบล่าสุด: <span id="bar-last-check">-</span> · 
     แจ้งเตือนแล้ว: <span id="bar-total-notified">0</span> รายการ · 
-    ข้อผิดพลาด: <span id="bar-errors">0</span>
+    ข้อผิดพลาด: <span id="bar-errors">0</span></span>
   </div>
 </div>
 
@@ -54,7 +54,7 @@
   <!-- Hourly chart -->
   <div class="card">
     <div class="card-header">
-      <div class="card-title">📈 การสแกนรายชั่วโมง (วันนี้)</div>
+      <div class="card-title">{{ icon('chart-column') }} การสแกนรายชั่วโมง (วันนี้)</div>
     </div>
     <canvas id="hourlyChart" height="120"></canvas>
   </div>
@@ -62,7 +62,7 @@
   <!-- 7-day trend -->
   <div class="card">
     <div class="card-header">
-      <div class="card-title">📅 แนวโน้ม 7 วันล่าสุด</div>
+      <div class="card-title">{{ icon('trending-up') }} แนวโน้ม 7 วันล่าสุด</div>
     </div>
     <canvas id="trendChart" height="120"></canvas>
   </div>
@@ -73,7 +73,7 @@
   <!-- Department breakdown -->
   <div class="card">
     <div class="card-header">
-      <div class="card-title">🏥 สแกนตามกลุ่มงาน (วันนี้)</div>
+      <div class="card-title">{{ icon('building-2') }} สแกนตามกลุ่มงาน (วันนี้)</div>
     </div>
     <div id="dept-list">
       {% for d in dept %}
@@ -81,7 +81,7 @@
         <div style="flex:1; font-size:12px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
           {{ d.HR_DEP_NAME or 'ไม่ระบุ' }}
         </div>
-        <div style="font-size:13px; font-weight:700; font-family:var(--font-mono); color:var(--accent-cyan); min-width:32px; text-align:right;">
+        <div style="font-size:13px; font-weight:700; font-family:var(--font-mono); color:var(--text-primary); min-width:32px; text-align:right;">
           {{ d.cnt }}
         </div>
         <div style="width:80px; height:6px; background:var(--bg-base); border-radius:3px; overflow:hidden;">
@@ -95,7 +95,7 @@
   <!-- Recent scans table -->
   <div class="card">
     <div class="card-header">
-      <div class="card-title">🕐 การสแกนล่าสุด</div>
+      <div class="card-title">{{ icon('clock') }} การสแกนล่าสุด</div>
     </div>
     <div class="table-wrap" style="max-height:320px; overflow-y:auto;">
       <table>
@@ -118,11 +118,11 @@
             </td>
             <td>
               {% if r.DIRECTION == 'in' %}
-                <span class="badge badge-in">🟢 เข้างาน</span>
+                <span class="badge badge-in">{{ icon('log-in') }} เข้างาน</span>
               {% elif r.DIRECTION == 'out' %}
-                <span class="badge badge-out">🔴 ออกงาน</span>
+                <span class="badge badge-out">{{ icon('log-out') }} ออกงาน</span>
               {% else %}
-                <span class="badge badge-other">📍 {{ r.SCAN_TYPE }}</span>
+                <span class="badge badge-other">{{ icon('map-pin') }} {{ r.SCAN_TYPE }}</span>
               {% endif %}
             </td>
           </tr>
@@ -138,28 +138,50 @@
 
 {% block scripts %}
 <script>
-// Chart defaults
-Chart.defaults.color = '#94a3b8';
-Chart.defaults.borderColor = '#1e3a5f';
+// สีกราฟอ่านจาก token ของหน้า (สว่าง/มืด) — เปลี่ยนทันทีเมื่อสลับโหมด
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+function chartColors() {
+  return { text: css('--text-muted'), grid: css('--border'), blue: css('--accent-blue'), tint: css('--tint-blue') };
+}
+let hourlyChart = null, trendChart = null;      // สร้างด้านล่าง — ประกาศก่อนเพื่อให้ applyChartColors เรียกก่อนสร้างกราฟได้
+function applyChartColors() {
+  const c = chartColors();
+  Chart.defaults.color = c.text;
+  Chart.defaults.borderColor = c.grid;
+  if (!hourlyChart || !trendChart) return;
+  hourlyChart.data.datasets[0].backgroundColor = c.blue;
+  trendChart.data.datasets[0].borderColor = c.blue;
+  trendChart.data.datasets[0].pointBackgroundColor = c.blue;
+  trendChart.data.datasets[0].backgroundColor = c.tint;
+  [hourlyChart, trendChart].forEach(ch => {
+    Object.values(ch.options.scales || {}).forEach(sc => {
+      sc.ticks = Object.assign(sc.ticks || {}, { color: c.text });
+      sc.grid = Object.assign(sc.grid || {}, { color: c.grid });
+    });
+    ch.update();
+  });
+}
+applyChartColors();
+document.addEventListener('appearance-changed', applyChartColors);
 
 // Init charts
 const hourlyData = {{ hourly | tojson }};
 const trendData  = {{ trend  | tojson }};
+const C0 = chartColors();
 
 // Hourly chart
 const hLabels = Array.from({length:24}, (_,i) => i+':00');
 const hValues = Array(24).fill(0);
 hourlyData.forEach(h => { hValues[h.hr] = h.cnt; });
 
-const hourlyChart = new Chart(document.getElementById('hourlyChart'), {
+hourlyChart = new Chart(document.getElementById('hourlyChart'), {
   type: 'bar',
   data: {
     labels: hLabels,
     datasets: [{
       data: hValues,
-      backgroundColor: 'rgba(29,140,248,0.6)',
-      borderColor: '#1d8cf8',
-      borderWidth: 1,
+      backgroundColor: C0.blue,
+      borderWidth: 0,
       borderRadius: 3
     }]
   },
@@ -173,18 +195,18 @@ const hourlyChart = new Chart(document.getElementById('hourlyChart'), {
 });
 
 // Trend chart
-const trendChart = new Chart(document.getElementById('trendChart'), {
+trendChart = new Chart(document.getElementById('trendChart'), {
   type: 'line',
   data: {
     labels: trendData.map(t => t.d),
     datasets: [{
       data: trendData.map(t => t.cnt),
-      borderColor: '#00d4ff',
-      backgroundColor: 'rgba(0,212,255,0.1)',
+      borderColor: C0.blue,
+      backgroundColor: C0.tint,
       borderWidth: 2,
-      pointRadius: 4,
-      pointBackgroundColor: '#00d4ff',
-      tension: 0.4,
+      pointRadius: 3,
+      pointBackgroundColor: C0.blue,
+      tension: 0.35,
       fill: true
     }]
   },
@@ -196,6 +218,7 @@ const trendChart = new Chart(document.getElementById('trendChart'), {
     }
   }
 });
+applyChartColors();
 
 // Monitor control
 function startMonitor() {

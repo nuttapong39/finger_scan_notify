@@ -1,27 +1,27 @@
 {% extends "base.html" %}
 {% block title %}ตั้งค่า API{% endblock %}
-{% block page_title %}ตั้งค่า API การแจ้งเตือน{% endblock %}
+{% block page_title %}{{ icon('plug', 'ic-lg') }} ตั้งค่า API การแจ้งเตือน{% endblock %}
 {% block page_sub %}Line Notify + MOPH Alert{% endblock %}
 
 {% block content %}
 <div class="grid-2" style="align-items:start; gap:24px;">
   <div>
     <!-- Line Notify info -->
-    <div class="card" style="margin-bottom:20px; background:rgba(0,186,124,0.04); border-color:rgba(0,186,124,0.3);">
+    <div class="card" style="margin-bottom:20px;">
       <div class="card-header">
-        <div class="card-title" style="color:#00BA7C;">💚 Line Notify (แนะนำ)</div>
-        <span class="badge" style="background:rgba(0,186,124,0.15); color:#00BA7C;">ใช้งานได้ทันที</span>
+        <div class="card-title">{{ icon('brand-line', 'c-line') }} Line Notify (แนะนำ)</div>
+        <span class="badge badge-green">ใช้งานได้ทันที</span>
       </div>
       <div style="font-size:13px; color:var(--text-secondary); line-height:1.9;">
-        <strong style="color:#00BA7C;">วิธีรับ Token:</strong>
+        <strong>วิธีรับ Token:</strong>
         <ol style="margin:8px 0 0 16px; padding:0;">
-          <li>เปิด <a href="https://notify-bot.line.me/my/" target="_blank" style="color:var(--accent-cyan);">notify-bot.line.me/my/</a></li>
+          <li>เปิด <a href="https://notify-bot.line.me/my/" target="_blank" rel="noopener">notify-bot.line.me/my/</a></li>
           <li>Login ด้วย Line Account</li>
           <li>กด <strong>"Generate token"</strong></li>
           <li>ตั้งชื่อ Token → เลือก Chat ที่ต้องการรับ → Generate</li>
           <li>Copy Token ไปวางในหน้า "จัดการ Token"</li>
         </ol>
-        <div style="margin-top:10px; padding:10px 12px; background:var(--bg-base); border-radius:6px; font-family:var(--font-mono); font-size:11px; color:var(--accent-amber);">
+        <div style="margin-top:10px; padding:10px 12px; background:var(--bg-base); border-radius:6px; font-family:var(--font-mono); font-size:11px; color:var(--text-secondary);">
           POST https://notify-api.line.me/api/notify<br>
           Authorization: Bearer {TOKEN}<br>
           Content-Type: application/x-www-form-urlencoded<br>
@@ -31,9 +31,9 @@
     </div>
 
     <!-- MOPH Alert config -->
-    <div class="card" style="background:rgba(8,145,178,0.04); border-color:rgba(8,145,178,0.3);">
+    <div class="card">
       <div class="card-header">
-        <div class="card-title" style="color:#0891B2;">🏥 MOPH Alert — ตั้งค่า</div>
+        <div class="card-title">{{ icon('hospital') }} MOPH Alert — ตั้งค่า</div>
       </div>
       <form method="POST">
         <div class="form-group">
@@ -51,13 +51,12 @@
           <input type="url" name="hospital_logo" class="form-control"
                  value="{{ cfg.hospital_logo or '' }}" placeholder="https://...">
         </div>
-        <button type="submit" class="btn btn-primary">💾 บันทึก</button>
+        <button type="submit" class="btn btn-primary">{{ icon('save') }} บันทึก</button>
       </form>
 
       <!-- MOPH Alert issue explanation -->
-      <div style="margin-top:16px; padding:14px; background:rgba(255,214,10,0.06);
-                  border:1px solid rgba(255,214,10,0.3); border-radius:8px; font-size:12px; line-height:1.8;">
-        <strong style="color:var(--accent-amber);">⚠️ HTTP 200 แต่ไม่แจ้งเตือน?</strong><br>
+      <div class="alert alert-warn" style="margin:16px 0 0; display:block; font-size:12px; line-height:1.8;">
+        <strong>{{ icon('triangle-alert') }} HTTP 200 แต่ไม่แจ้งเตือน?</strong><br>
         <span style="color:var(--text-secondary);">
           ผู้รับแต่ละคนต้องเข้าไป <strong>Subscribe / Follow</strong> channel ใน MOPH Alert App ก่อน
           ถึงจะรับการแจ้งเตือนได้ แม้ API จะตอบ 200 แล้วก็ตาม
@@ -70,20 +69,20 @@
   <div>
     <div class="card">
       <div class="card-header">
-        <div class="card-title">🎨 Preview การแจ้งเตือน</div>
+        <div class="card-title">{{ icon('eye') }} Preview การแจ้งเตือน</div>
         <div style="display:flex; gap:8px;">
-          <button class="btn btn-outline btn-sm" onclick="showPreview('line-in')" id="btn-line-in">💚 Line เข้า</button>
-          <button class="btn btn-outline btn-sm" onclick="showPreview('line-out')" id="btn-line-out">💚 Line ออก</button>
-          <button class="btn btn-outline btn-sm" onclick="showPreview('moph-in')" id="btn-moph-in">🏥 MOPH เข้า</button>
+          <button class="btn btn-outline btn-sm" onclick="showPreview('line-in')" id="btn-line-in">{{ icon('brand-line', 'c-line') }} Line เข้า</button>
+          <button class="btn btn-outline btn-sm" onclick="showPreview('line-out')" id="btn-line-out">{{ icon('brand-line', 'c-line') }} Line ออก</button>
+          <button class="btn btn-outline btn-sm" onclick="showPreview('moph-in')" id="btn-moph-in">{{ icon('hospital') }} MOPH เข้า</button>
         </div>
       </div>
 
       <!-- Line Notify preview (checkin) -->
       <div id="prev-line-in" class="preview-card">
-        <div style="background:#00BA7C; color:#fff; padding:10px 14px; font-size:12px; font-weight:700; border-radius:8px 8px 0 0;">
-          💚 LINE NOTIFY — ตัวอย่างข้อความ
+        <div style="background:#06C755; color:#fff; padding:10px 14px; font-size:12px; font-weight:700; border-radius:8px 8px 0 0;">
+          {{ icon('brand-line') }} LINE NOTIFY — ตัวอย่างข้อความ
         </div>
-        <div style="background:#161B22; padding:16px; border-radius:0 0 8px 8px; font-family:var(--font-mono); font-size:12px; color:#e2e8f0; line-height:2; white-space:pre;">
+        <div data-keep-emoji style="background:#161B22; padding:16px; border-radius:0 0 8px 8px; font-family:var(--font-mono); font-size:12px; color:#e2e8f0; line-height:2; white-space:pre;">
 🟢 เข้างาน
 ─────────────────────────
 🏥 โรงพยาบาลเชียงกลาง
@@ -99,10 +98,10 @@
 
       <!-- Line Notify preview (checkout) -->
       <div id="prev-line-out" class="preview-card" style="display:none;">
-        <div style="background:#F97316; color:#fff; padding:10px 14px; font-size:12px; font-weight:700; border-radius:8px 8px 0 0;">
-          💚 LINE NOTIFY — ตัวอย่างข้อความ
+        <div style="background:#06C755; color:#fff; padding:10px 14px; font-size:12px; font-weight:700; border-radius:8px 8px 0 0;">
+          {{ icon('brand-line') }} LINE NOTIFY — ตัวอย่างข้อความ
         </div>
-        <div style="background:#161B22; padding:16px; border-radius:0 0 8px 8px; font-family:var(--font-mono); font-size:12px; color:#e2e8f0; line-height:2; white-space:pre;">
+        <div data-keep-emoji style="background:#161B22; padding:16px; border-radius:0 0 8px 8px; font-family:var(--font-mono); font-size:12px; color:#e2e8f0; line-height:2; white-space:pre;">
 🔴 ออกงาน
 ─────────────────────────
 🏥 โรงพยาบาลเชียงกลาง
@@ -120,7 +119,7 @@
       <div id="prev-moph-in" class="preview-card" style="display:none;">
         <div style="background:linear-gradient(135deg,#0F4C8A,#1D8CF8); border-radius:8px 8px 0 0; height:48px;"></div>
         <div style="background:#0F4C8A; padding:10px 14px; display:flex; align-items:center; gap:8px;">
-          <span style="background:#1A4A7A; border-radius:20px; padding:4px 12px; font-size:12px; color:#60B4FF; font-weight:700;">🟢 เข้างาน</span>
+          <span style="background:#1A4A7A; border-radius:20px; padding:4px 12px; font-size:12px; color:#60B4FF; font-weight:700;">{{ icon('log-in') }} เข้างาน</span>
           <div style="flex:1;"></div>
           <span style="font-size:11px; color:#94A3B8;">โรงพยาบาลเชียงกลาง</span>
         </div>
@@ -129,16 +128,16 @@
           <div style="font-size:12px; color:#60A5FA; margin-top:4px;">นักวิชาการคอมพิวเตอร์</div>
           <div style="height:2px; background:#1D8CF8; margin:10px 0;"></div>
           <div style="font-size:11px; color:#CBD5E1; line-height:2.2;">
-            🏥 กลุ่มงานประกันสุขภาพ ยุทธศาสตร์ ฯ<br>
-            📂 งานสารสนเทศทางการแพทย์<br>
-            👤 <span style="background:rgba(8,145,178,0.3); color:#60A5FA; padding:2px 8px; border-radius:4px; font-size:10px;">พนักงานกระทรวงสาธารณสุข</span><br>
-            📱 FACESCAN
+            {{ icon('building-2') }} กลุ่มงานประกันสุขภาพ ยุทธศาสตร์ ฯ<br>
+            {{ icon('folder') }} งานสารสนเทศทางการแพทย์<br>
+            {{ icon('user') }} <span style="background:rgba(8,145,178,0.3); color:#60A5FA; padding:2px 8px; border-radius:4px; font-size:10px;">พนักงานกระทรวงสาธารณสุข</span><br>
+            {{ icon('scan-face') }} FACESCAN
           </div>
         </div>
         <div style="background:#0D1B2E; border-top:1px solid #1E3A5F; display:flex; padding:10px 16px; gap:12px;">
-          <div style="flex:1;"><div style="font-size:10px; color:#64748B;">📅 วันที่</div><div style="font-size:12px; font-weight:700; color:#E2E8F0; margin-top:3px;">14/04/2026 (จันทร์)</div></div>
+          <div style="flex:1;"><div style="font-size:10px; color:#64748B;">{{ icon('calendar') }} วันที่</div><div style="font-size:12px; font-weight:700; color:#E2E8F0; margin-top:3px;">14/04/2026 (จันทร์)</div></div>
           <div style="width:1px; background:#1E3A5F;"></div>
-          <div style="flex:1; padding-left:12px;"><div style="font-size:10px; color:#64748B;">🕐 เวลา</div><div style="font-size:20px; font-weight:700; color:#22C55E;">08:15:32</div></div>
+          <div style="flex:1; padding-left:12px;"><div style="font-size:10px; color:#64748B;">{{ icon('clock') }} เวลา</div><div style="font-size:20px; font-weight:700; color:#22C55E;">08:15:32</div></div>
         </div>
         <div style="background:#060E1C; border-radius:0 0 8px 8px; padding:8px 14px; display:flex; align-items:center; gap:8px;">
           <div style="width:18px; height:18px; border-radius:50%; background:#0F4C8A;"></div>
@@ -162,12 +161,9 @@ const previews = ['line-in','line-out','moph-in'];
 function showPreview(id) {
   previews.forEach(p => {
     document.getElementById('prev-'+p).style.display = p===id ? '' : 'none';
-    document.getElementById('btn-'+p).style.borderColor = '';
-    document.getElementById('btn-'+p).style.color = '';
+    document.getElementById('btn-'+p).classList.remove('active');
   });
-  const colors = {'line-in':'#00BA7C','line-out':'#F97316','moph-in':'#0891B2'};
-  document.getElementById('btn-'+id).style.borderColor = colors[id];
-  document.getElementById('btn-'+id).style.color = colors[id];
+  document.getElementById('btn-'+id).classList.add('active');
 }
 showPreview('line-in');
 </script>
