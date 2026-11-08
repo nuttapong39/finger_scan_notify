@@ -9,7 +9,7 @@ import pytest
 import database
 
 PAGES = ['/dashboard', '/logs', '/backfill', '/reminders', '/debug',
-         '/config/database', '/config/api', '/config/tokens', '/account/password']
+         '/config/database', '/config/api', '/config/tokens', '/account/password', '/watch']
 
 EMOJI = re.compile('[\U0001F000-\U0001FAFF☀-➿⬀-⯿️⌀-⏿]')
 USE_HREF = re.compile(r'<use\s+href="[^"]*icons\.svg[^"#]*#([a-z0-9-]+)"')

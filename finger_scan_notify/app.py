@@ -12,26 +12,29 @@ from database import (
     advance_last_scan_id, was_notified, count_recent_notified,
     add_guard_event, get_guard_events, save_guard_settings,
     get_flex_theme, save_flex_theme, get_sqlite_conn, add_scan_skips, get_reminder_config,
-    close_stuck_backfill_jobs
+    close_stuck_backfill_jobs, get_handled_scan_ids
 )
 from hosoffice import (
     get_recent_scans_from_mysql, get_today_stats, get_new_scans_from_mysql,
-    get_max_scan_id, check_connection, get_muted_person_ids
+    get_max_scan_id, check_connection, get_muted_person_ids, get_scans_in_id_range
 )
 import auth
 import icons
 import reminders
 import scan_types
+import scanwatch
 import settings
 from cards import THAI_DAYS, build_flex_message, build_backfill_card, build_reminder_card, build_line_message
 from delivery import deliver_scan, deliver_reminder, scan_skip_reason
 from flex_theme import DEFAULT_THEME, validate_theme
 from notifier import LINE_NOTIFY_URL
 from routes_phase2 import bp as phase2_bp
+from routes_watch import bp as watch_bp
 
 app = Flask(__name__)
 auth.install(app, settings.current.secret_key)     # ทุก route ต้องล็อกอิน (ยกเว้น /login)
 app.register_blueprint(phase2_bp)
+app.register_blueprint(watch_bp)
 app.jinja_env.globals.update(icon=icons.icon, sprite_url=icons.sprite_url, static_url=icons.static_url)   # ไอคอน Lucide / Simple Icons ใน template
 app.jinja_env.filters['initial'] = icons.initial
 
@@ -45,6 +48,7 @@ monitor_status = {
 }
 
 BATCH_LIMIT = 500   # จำนวน scan สูงสุดที่ดึงต่อรอบ
+LATE_LOOKBACK_IDS = 300   # อ่านซ้ำแถว ID ต่ำกว่าจุดตรวจเท่านี้ — กันแถวที่ commit ช้ากว่าแถวที่ ID สูงกว่า
 
 # ── ระบบป้องกันแจ้งเตือนท่วม ─────────────────────────────────────
 #  1) กรอง scan เก่า      : SCAN_DATE_TIME เก่ากว่า max_scan_age_minutes → ไม่ส่ง (ข้ามและเลื่อน checkpoint)
@@ -73,6 +77,19 @@ def _guard_log(kind, detail):
     except Exception:
         pass
 
+def _unhandled_late_scans(last_id, token_pids):
+    """แถวของคนที่มี token ซึ่ง ID ต่ำกว่าจุดตรวจ แต่ยังไม่มีทั้ง log การส่งและบันทึกการข้าม (commit ช้า)
+    ดึงไม่ได้ = ข้ามรอบนี้ ไม่ทำให้รอบหลักล้ม"""
+    if last_id <= 0 or not token_pids:
+        return []
+    try:
+        rows = get_scans_in_id_range(max(0, last_id - LATE_LOOKBACK_IDS), last_id, token_pids)
+    except Exception:   # noqa: BLE001
+        return []
+    done = get_handled_scan_ids([r['ID'] for r in rows])
+    return [r for r in rows if int(r['ID']) not in done]
+
+
 def monitor_cycle():
     """ทำงาน 1 รอบ  คืน True ถ้า batch เต็ม (ควรวนต่อทันทีโดยไม่ต้องรอ)"""
     cfg       = get_db_config()
@@ -92,7 +109,9 @@ def monitor_cycle():
     new_scans = get_new_scans_from_mysql(last_id, BATCH_LIMIT)   # raise ถ้า DB มีปัญหา
     monitor_status.update(last_check=datetime.now().strftime('%H:%M:%S'),
                           connected=True, last_error=None, last_new_count=len(new_scans))
-    if not new_scans:
+    token_pids = {t['person_id'] for t in get_all_tokens() if t.get('active')}
+    late_scans = _unhandled_late_scans(last_id, token_pids)
+    if not new_scans and not late_scans:
         return False
     full   = len(new_scans) >= BATCH_LIMIT
     cutoff = datetime.now() - timedelta(minutes=max_age)
@@ -114,18 +133,19 @@ def monitor_cycle():
     stale_first = stale_last = None
     claimed_max = last_id       # ID สูงสุดที่ commit checkpoint แล้ว
     pending_max = last_id       # ID สูงสุดที่ตรวจผ่านแล้ว (รวมแถวที่ข้าม)
-    token_pids = {t['person_id'] for t in get_all_tokens() if t.get('active')}
     muted = get_muted_person_ids()          # raise ถ้า DB มีปัญหา → รอบนี้ไม่ส่งอะไร
     skips = []                              # เหตุผลการข้าม (Delivery status "ถูกข้าม") เฉพาะคนที่มี token
 
     def skip(scan, pid, reason):
         skips.append((int(scan.get('ID') or 0), pid, 'live', reason))
 
-    for scan in new_scans:
+    late_ids = {int(s['ID']) for s in late_scans}
+    for scan in late_scans + new_scans:
         if not monitor_status['running']:
             break
         sid = int(scan.get('ID') or 0)
-        if sid <= last_id:
+        late = sid <= last_id
+        if late and sid not in late_ids:
             continue
         pid = scan.get('PERSON_ID')
 
@@ -138,10 +158,11 @@ def monitor_cycle():
                 skip(scan, pid, 'stale')
             continue
 
-        # รับแถวนี้ 'ก่อนส่ง' — False = process อื่นรับไปแล้ว ข้าม
-        if not advance_last_scan_id(sid):
-            continue
-        claimed_max = pending_max = max(claimed_max, sid)
+        # รับแถวนี้ 'ก่อนส่ง' — False = process อื่นรับไปแล้ว ข้าม (แถวที่มาช้าไม่ขยับจุดตรวจ: ผ่านด่าน "ยังไม่มี log/skip" แล้ว)
+        if not late:
+            if not advance_last_scan_id(sid):
+                continue
+            claimed_max = pending_max = max(claimed_max, sid)
 
         token_row = get_token_by_person_id(pid)
         if not token_row:
@@ -599,6 +620,8 @@ def startup():
                                          else "NOT STARTED — " + str(monitor_status["last_error"])))
         reminders.start()
         print("  เตือนยังไม่สแกน: ตรวจทุก 60 วินาที")
+        scanwatch.start()
+        print("  ตรวจ Lost scan / การนำเข้าหยุด: ทุก 60 วินาที")
     else:
         print("  เครื่องนี้ไม่ใช่เครื่องหลัก (MONITOR_AUTOSTART ไม่ได้ตั้ง) — Monitor และการเตือนไม่เริ่มเอง")
     if auth.get_account() is None:

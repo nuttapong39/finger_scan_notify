@@ -4,6 +4,7 @@ import pytest
 import app as app_module
 import database
 import reminders
+import scanwatch
 import serve
 import settings
 from test_settings import PROD
@@ -14,6 +15,7 @@ def calls(tmp_db, monkeypatch):
     log = []
     monkeypatch.setattr(app_module, '_do_start_monitor', lambda: log.append('monitor') or True)
     monkeypatch.setattr(reminders, 'start', lambda: log.append('reminders'))
+    monkeypatch.setattr(scanwatch, 'start', lambda: log.append('scanwatch'))
     return log
 
 
@@ -27,7 +29,7 @@ def test_non_primary_machine_starts_nothing(calls):
 def test_primary_machine_starts_monitor_and_reminders(calls, monkeypatch):
     monkeypatch.setattr(settings, 'current', settings.load({**PROD, 'MONITOR_AUTOSTART': '1'}))
     app_module.startup()
-    assert calls == ['monitor', 'reminders']
+    assert calls == ['monitor', 'reminders', 'scanwatch']
 
 
 def test_status_tells_ui_whether_this_is_the_primary_machine(admin_client, monkeypatch):

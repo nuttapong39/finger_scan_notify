@@ -118,7 +118,8 @@
   const STATUS = { success: [() => icon('circle-check'), 'ส่งแล้ว'], error: [() => icon('circle-x'), 'ล้มเหลว'],
                    cancelled: [() => icon('undo-2'), 'ยกเลิก (สแกนแล้ว)'], claimed: [() => icon('loader-circle'), 'กำลังส่ง'] };
   const REASON = { disabled: 'ปิดอยู่', outside_window: 'อยู่นอกช่วงเวลา', weekend: 'วันเสาร์-อาทิตย์',
-                   holiday: 'วันหยุดราชการ', error: 'ผิดพลาด (ไม่เตือน)' };
+                   holiday: 'วันหยุดราชการ', error: 'ผิดพลาด (ไม่เตือน)',
+                   import_stall: 'การนำเข้าสแกนหยุด งดไว้ก่อน ลองใหม่ทุกรอบ' };
   const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                            body: JSON.stringify(body || {}) }).then(r => r.json());
   const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };

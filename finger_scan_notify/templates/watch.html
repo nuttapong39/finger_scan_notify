@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Scan ที่อาจตกหล่น{% endblock %}
+{% block page_title %}{{ icon('scan-search', 'ic-lg') }} Scan ที่อาจตกหล่น{% endblock %}
+{% block page_sub %}Lost scan = สแกนที่เครื่องบันทึกแล้วแต่ไม่มาถึง hosoffice (เลข Device sequence ขาด) · ไม่ใช่การลืมสแกนของบุคลากร{% endblock %}
+
+{% block head %}
+<style>
+.w-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap:14px; margin-bottom:20px; }
+.w-kv { font-size:12.5px; color:var(--text-secondary); }
+.w-kv b { display:block; font-size:18px; color:var(--text-primary); font-family:var(--font-mono); margin-top:2px; }
+.w-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.w-dup td { font-size:12.5px; }
+.w-dup tr.first td { border-top:2px solid var(--border-light); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="w-grid" id="w-state">
+  <div class="stat-card"><div class="w-kv">สถานะการนำเข้า<b id="s-import">-</b></div></div>
+  <div class="stat-card"><div class="w-kv">เลขล่าสุดที่ hosoffice<b id="s-seq">-</b></div></div>
+  <div class="stat-card"><div class="w-kv">เห็นเลขใหม่ล่าสุด<b id="s-new" style="font-size:14px;">-</b></div></div>
+  <div class="stat-card"><div class="w-kv">ตรวจล่าสุด<b id="s-poll" style="font-size:14px;">-</b></div></div>
+</div>
+<div class="alert alert-error" id="s-error" style="display:none;"></div>
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header">
+    <div class="card-title">{{ icon('triangle-alert') }} เหตุการณ์</div>
+    <div class="w-row">
+      <label class="form-label" for="it-person" style="margin:0;">แจ้ง IT ที่</label>
+      <select id="it-person" class="form-control" style="width:220px; padding:5px 10px;">
+        {% for p in recipients %}<option value="{{ p.person_id }}" {{ 'selected' if p.person_id == state.it_person_id else '' }}>{{ p.name }} ({{ p.person_id }})</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="form-hint" style="margin:-6px 0 12px;">
+    เลขขาดเกิน <span id="h-lost">15</span> นาทีถึงแจ้ง (กันกรณีแค่มาช้า) · แจ้งครั้งเดียวต่อเหตุการณ์ และแจ้งอีกครั้งเมื่อกลับมาปกติ · สรุปทุกเช้า 07:30 ถ้ายังมีค้าง
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ชนิด</th><th>รายละเอียด</th><th>พบครั้งแรก</th><th>สถานะ</th><th>แจ้ง IT</th></tr></thead>
+      <tbody id="w-events"><tr><td colspan="5" class="form-hint">กำลังโหลด...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">{{ icon('copy') }} นำเข้าซ้ำ (Device sequence ซ้ำกัน)</div>
+    <button class="btn btn-outline btn-sm" id="dup-load">{{ icon('search') }} ตรวจแถวซ้ำ (60 วันล่าสุด)</button>
+  </div>
+  <div class="form-hint" style="margin:-6px 0 12px;">
+    แถวที่เครื่องมือนำเข้าเขียนซ้ำจากสแกนเดียวกัน (เลขเครื่องเดียวกัน เวลาต่างกันไม่กี่วินาที) — ให้ HR ตรวจก่อนลบ
+    ระบบนี้ไม่ลบหรือแก้ข้อมูลใน hosoffice ผู้ดูแลเป็นผู้ลบเอง
+  </div>
+  <div id="dup-box" class="form-hint">กดปุ่มเพื่อตรวจ</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+  const KIND = { lost_scan: 'Lost scan', stall: 'การนำเข้าหยุด' };
+
+  function badge(text, cls, makeIcon) {
+    const b = el('span', null, 'badge ' + cls); if (makeIcon) b.append(makeIcon(), ' '); b.append(text); return b;
+  }
+  function renderState(s) {
+    $('s-import').textContent = s.stalled ? 'หยุด' : (s.last_poll_at ? 'ปกติ' : 'ยังไม่ตรวจ');
+    $('s-import').style.color = s.stalled ? 'var(--accent-red)' : 'var(--text-primary)';
+    $('s-seq').textContent = s.max_seq == null ? '-' : s.max_seq;
+    $('s-new').textContent = s.last_new_at || '-';
+    $('s-poll').textContent = s.last_poll_at || '-';
+    $('h-lost').textContent = s.lost_after_min;
+    const err = $('s-error');
+    err.style.display = s.last_error ? 'flex' : 'none';
+    if (s.last_error) setIconText(err, 'triangle-alert', 'ตรวจล่าสุดไม่สำเร็จ: ' + s.last_error);
+  }
+  function renderEvents(events) {
+    const tb = $('w-events'); tb.replaceChildren();
+    if (!events.length) {
+      const td = el('td', 'ยังไม่พบ Lost scan หรือการนำเข้าหยุด', 'form-hint'); td.colSpan = 5;
+      const tr = el('tr'); tr.appendChild(td); tb.appendChild(tr); return;
+    }
+    events.forEach(e => {
+      const tr = el('tr');
+      const detail = e.kind === 'lost_scan'
+        ? `เลข ${e.seq} · ระหว่างสแกน ${(e.detail.prev_time || '-').slice(-8)} – ${(e.detail.next_time || '-').slice(-8)}`
+        : `ไม่มีสแกนใหม่ตั้งแต่ ${e.detail.last_new || '-'}`;
+      tr.append(el('td', KIND[e.kind] || e.kind), el('td', detail, null), el('td', e.first_seen));
+      const st = el('td');
+      st.appendChild(e.open ? badge('ยังค้าง', 'badge-error', () => icon('circle-x'))
+                            : badge('เติมแล้ว ' + (e.closed_at || ''), 'badge-success', () => icon('circle-check')));
+      const al = el('td'); al.appendChild(e.alerted ? badge('แจ้งแล้ว', 'badge-muted', () => icon('bell')) : badge('ยังไม่แจ้ง', 'badge-muted'));
+      tr.append(st, al); tb.appendChild(tr);
+    });
+  }
+  function load() {
+    fetch('/api/watch/status').then(r => r.json()).then(d => { renderState(d.state); renderEvents(d.events); }).catch(() => {});
+  }
+  $('it-person').addEventListener('change', (ev) => {
+    fetch('/api/watch/config', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ it_person_id: Number(ev.target.value) }) })
+      .then(r => r.json()).then(d => showToast(d.message, d.success ? 'success' : 'error'));
+  });
+
+  $('dup-load').addEventListener('click', () => {
+    const box = $('dup-box'); box.textContent = 'กำลังตรวจ...';
+    fetch('/api/watch/duplicates').then(r => r.json()).then(d => {
+      if (!d.success) { box.textContent = d.message; return; }
+      if (!d.groups.length) { box.textContent = 'ไม่พบแถวที่ Device sequence ซ้ำ'; return; }
+      const table = el('table', null, 'w-dup'), head = el('thead'), hr = el('tr');
+      ['เลข', 'ID', 'ชื่อ', 'เวลาสแกน'].forEach(h => hr.appendChild(el('th', h)));
+      head.appendChild(hr); table.appendChild(head);
+      const body = el('tbody');
+      d.groups.forEach(g => g.rows.forEach((r, i) => {
+        const tr = el('tr', null, i === 0 ? 'first' : '');
+        tr.append(el('td', i === 0 ? g.seq : ''), el('td', r.id), el('td', r.name || '-'), el('td', r.time));
+        body.appendChild(tr);
+      }));
+      table.appendChild(body);
+      const wrap = el('div', null, 'table-wrap'); wrap.style.maxHeight = '420px'; wrap.style.overflowY = 'auto';
+      wrap.appendChild(table);
+      box.replaceChildren(el('div', `พบ ${d.groups.length} เลขที่มีแถวซ้ำ (${d.groups.reduce((n, g) => n + g.rows.length, 0)} แถว)`, 'form-hint'), wrap);
+    }).catch(() => { box.textContent = 'เชื่อมต่อไม่ได้'; });
+  });
+  load(); setInterval(load, 30000);
+})();
+</script>
+{% endblock %}

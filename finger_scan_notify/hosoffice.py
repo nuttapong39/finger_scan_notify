@@ -114,6 +114,38 @@ def get_new_scans_from_mysql(last_id, limit=500):
                   (int(last_id), int(limit)))
 
 
+def get_scans_in_id_range(lo, hi, person_ids):
+    """Scan ที่ lo < ID <= hi ของคนที่ระบุ — Monitor อ่านซ้ำแถวที่ commit ช้ากว่าแถวที่ ID สูงกว่า (raise ถ้า DB มีปัญหา)"""
+    pids = [int(p) for p in person_ids]
+    if not pids or int(hi) <= int(lo):
+        return []
+    return _query(f"SELECT {SCAN_COLS} FROM `{_tbl()}` WHERE ID > %s AND ID <= %s AND PERSON_ID IN ({_in(pids)}) "
+                  f"ORDER BY ID LIMIT 500", (int(lo), int(hi), *pids))
+
+
+def get_device_window(n=2000, days=14):
+    """Device sequence (MACHIN_SCAN_ID) ของ Scan จากเครื่อง n เลขล่าสุด → [{'seq','machine','time'}] (raise ถ้า DB มีปัญหา)
+    ใช้ดัชนีเวลาสแกน (ไม่มีดัชนีบน MACHIN_SCAN_ID) แล้วตัดช่วงเลขในโค้ด ; แถว MANUAL/SIGN ไม่มีเลขจึงไม่ถูกนับ"""
+    rows = _query(f"SELECT MACHIN_SCAN_ID AS seq, MACHIN_ID AS machine, SCAN_DATE_TIME AS time FROM `{_tbl()}` "
+                  f"WHERE SCAN_DATE_TIME >= DATE_SUB(NOW(), INTERVAL %s DAY) AND MACHIN_SCAN_ID IS NOT NULL "
+                  f"ORDER BY MACHIN_SCAN_ID", (int(days),))
+    rows = [r for r in rows if r['time'] is not None]
+    if not rows:
+        return []
+    floor = max(r['seq'] for r in rows) - int(n)
+    return [r for r in rows if r['seq'] >= floor]
+
+
+def get_duplicate_device_sequences(days=60):
+    """แถวที่ใช้ Device sequence + เครื่องเดียวกันมากกว่า 1 แถว (นำเข้าซ้ำ) เรียงตามเลข/เวลา — ให้ HR ยืนยันก่อนลบ"""
+    return _query(f"SELECT f.ID, f.MACHIN_SCAN_ID AS seq, f.MACHIN_ID AS machine, f.PERSON_ID, f.HR_FULLNAME, f.SCAN_DATE_TIME "
+                  f"FROM `{_tbl()}` f JOIN (SELECT MACHIN_ID, MACHIN_SCAN_ID FROM `{_tbl()}` "
+                  f"WHERE MACHIN_SCAN_ID IS NOT NULL AND SCAN_DATE_TIME >= DATE_SUB(NOW(), INTERVAL %s DAY) "
+                  f"GROUP BY MACHIN_ID, MACHIN_SCAN_ID HAVING COUNT(*) > 1) d "
+                  f"ON d.MACHIN_SCAN_ID = f.MACHIN_SCAN_ID AND d.MACHIN_ID <=> f.MACHIN_ID "
+                  f"ORDER BY f.MACHIN_SCAN_ID, f.SCAN_DATE_TIME LIMIT 3000", (int(days),))
+
+
 def get_max_scan_id():
     """MAX(ID) หรือ None ถ้าต่อ DB ไม่ได้ (None ≠ 0: ห้ามใช้ 0 เป็นจุดเริ่มต้น)"""
     try:

@@ -34,6 +34,9 @@
         <a href="/reminders" class="{{ 'active' if request.endpoint == 'phase2.reminders_page' else '' }}">
           {{ icon('alarm-clock') }} เตือนยังไม่สแกน
         </a>
+        <a href="/watch" class="{{ 'active' if request.endpoint == 'watch.page' else '' }}">
+          {{ icon('scan-search') }} Scan ที่อาจตกหล่น
+        </a>
         <a href="/debug" class="{{ 'active' if request.endpoint == 'debug_page' else '' }}">
           {{ icon('wrench') }} Debug / ทดสอบ API
         </a>

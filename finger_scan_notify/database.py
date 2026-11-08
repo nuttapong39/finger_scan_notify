@@ -213,6 +213,18 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS login_attempts (
         ip TEXT PRIMARY KEY, failures INTEGER NOT NULL DEFAULT 0, locked_until REAL NOT NULL DEFAULT 0
     )""")
+    # ── Lost scan / Import stall (scanwatch.py) ──
+    c.execute("""CREATE TABLE IF NOT EXISTS scan_watch_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1), it_person_id INTEGER NOT NULL DEFAULT 156,
+        max_seq INTEGER, last_new_at REAL, last_poll_at REAL, last_error TEXT,
+        stalled INTEGER NOT NULL DEFAULT 0, summary_date TEXT, alert_fail_at REAL
+    )""")
+    c.execute("INSERT OR IGNORE INTO scan_watch_state (id) VALUES (1)")
+    c.execute("""CREATE TABLE IF NOT EXISTS watch_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, seq INTEGER, detail TEXT,
+        first_seen REAL NOT NULL, closed_at REAL, alerted_at REAL, recovery_notified INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(kind, seq)
+    )""")
     # มีค่าเชื่อมต่อ hosoffice ใน .env แล้ว → ไม่เก็บรหัส MySQL ซ้ำใน SQLite (ไฟล์นี้ถูกคัดลอก/สำรองไปที่อื่น)
     if settings.current.hosoffice:
         c.execute("UPDATE db_config SET password='' WHERE COALESCE(password,'') <> ''")
@@ -445,6 +457,90 @@ def get_delivery_records(scan_ids):
         ids).fetchall()]
     conn.close()
     return logs, skips
+
+# ── Lost scan / Import stall ──────────────────────────────────
+_WATCH_FIELDS = ('it_person_id', 'max_seq', 'last_new_at', 'last_poll_at', 'last_error', 'stalled',
+                 'summary_date', 'alert_fail_at')
+
+
+def get_watch_state():
+    conn = get_sqlite_conn()
+    row = conn.execute("SELECT * FROM scan_watch_state WHERE id=1").fetchone()
+    conn.close()
+    return dict(row)
+
+
+def save_watch_state(**fields):
+    bad = set(fields) - set(_WATCH_FIELDS)
+    if bad:
+        raise ValueError(f'ไม่มีฟิลด์: {sorted(bad)}')
+    if not fields:
+        return
+    conn = get_sqlite_conn()
+    conn.execute(f"UPDATE scan_watch_state SET {', '.join(k + '=?' for k in fields)} WHERE id=1", tuple(fields.values()))
+    conn.commit(); conn.close()
+
+
+def open_watch_event(kind, seq, detail, now_ts):
+    """เปิดเหตุการณ์ (kind, seq) — เปิดซ้ำเลขเดิมไม่สร้างใหม่ ; stall (seq=None) เปิดได้หลายครั้งต่างเวลา"""
+    conn = get_sqlite_conn()
+    cur = conn.execute("INSERT OR IGNORE INTO watch_events (kind, seq, detail, first_seen) VALUES (?,?,?,?)",
+                       (kind, seq, json.dumps(detail or {}, ensure_ascii=False), now_ts))
+    conn.commit(); conn.close()
+    return cur.rowcount == 1
+
+
+def get_watch_events(kind=None, open_only=False, limit=500):
+    where, args = [], []
+    if kind:
+        where.append('kind=?'); args.append(kind)
+    if open_only:
+        where.append('closed_at IS NULL')
+    conn = get_sqlite_conn()
+    rows = conn.execute("SELECT * FROM watch_events" + (' WHERE ' + ' AND '.join(where) if where else '') +
+                        " ORDER BY (closed_at IS NOT NULL), id DESC LIMIT ?", (*args, int(limit))).fetchall()
+    conn.close()
+    out = []
+    for r in rows:
+        e = dict(r)
+        e['detail'] = json.loads(e['detail'] or '{}')
+        e['open'] = e['closed_at'] is None
+        out.append(e)
+    return out
+
+
+def _mark_events(column, ids, value):
+    if not ids:
+        return
+    conn = get_sqlite_conn()
+    conn.executemany(f"UPDATE watch_events SET {column}=? WHERE id=?", [(value, int(i)) for i in ids])
+    conn.commit(); conn.close()
+
+
+def close_watch_events(ids, now_ts):
+    _mark_events('closed_at', ids, now_ts)
+
+
+def mark_watch_alerted(ids, now_ts):
+    _mark_events('alerted_at', ids, now_ts)
+
+
+def mark_watch_recovery_notified(ids):
+    _mark_events('recovery_notified', ids, 1)
+
+
+def get_handled_scan_ids(scan_ids):
+    """scan ที่แอปจัดการแล้ว (มี log การส่ง หรือบันทึกการข้าม) — Monitor ใช้กันอ่านซ้ำ/ส่งซ้ำ"""
+    ids = [int(i) for i in scan_ids]
+    if not ids:
+        return set()
+    q = ','.join('?' * len(ids))
+    conn = get_sqlite_conn()
+    done = {r[0] for r in conn.execute(f"SELECT scan_id FROM notify_logs WHERE scan_id IN ({q})", ids)}
+    done |= {r[0] for r in conn.execute(f"SELECT scan_id FROM scan_skips WHERE scan_id IN ({q})", ids)}
+    conn.close()
+    return done
+
 
 # ── Reminder config / recipients / log ────────────────────────
 def get_reminder_config():

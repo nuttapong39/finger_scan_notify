@@ -7,7 +7,7 @@ from datetime import datetime
 import cards
 import notifier
 import scan_types
-from database import add_notify_log, get_api_config, get_flex_theme
+from database import add_guard_event, add_notify_log, get_api_config, get_flex_theme
 
 SOURCES = ('live', 'backfill', 'test')
 
@@ -91,3 +91,23 @@ def deliver_reminder(kind, token_row, cfg, *, theme=None, now=None):
     url = (cfg.get('button_url') or '').strip()
     return notifier.post_line_notify(line, f"\n⚠️ ยังไม่พบการสแกน{what}\n👤 {person['name']}\n"
                                            f"ตรวจเมื่อ {now.strftime('%H:%M')}" + (f"\n{url}" if url else ''))
+
+
+def deliver_system_alert(kind, title, lines, token_row, *, now=None):
+    """ส่งการ์ดแจ้งเตือนระบบ (Lost scan / การนำเข้าหยุด) ถึง IT alert recipient
+    ไม่บันทึก notify_logs และไม่นับโควตา (ไม่ใช่ Scan ของบุคลากร) — บันทึกผลเป็น guard event 'it_alert'"""
+    api = get_api_config()
+    hosp, logo = api.get('hospital_name', ''), api.get('hospital_logo', '')
+    now = now or datetime.now()
+    ck, sk, line = _keys(token_row)
+    if _provider(token_row) == 'MOPH_ALERT':
+        if not (ck and sk):
+            return False, 0, 'no_keys'
+        result = notifier.post_moph(api.get('moph_api_url'), ck, sk,
+                                    cards.build_system_alert_card(kind, title, lines, hosp, logo, now))
+    else:
+        if not line:
+            return False, 0, 'no_keys'
+        result = notifier.post_line_notify(line, "\n[แจ้งเตือนระบบ] " + title + "".join("\n" + ln for ln in lines))
+    add_guard_event('it_alert', f'{kind}: {title} -> HTTP {result[1]}')
+    return result

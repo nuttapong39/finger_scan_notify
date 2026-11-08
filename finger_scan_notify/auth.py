@@ -28,7 +28,7 @@ PUBLIC_ENDPOINTS = {'auth.login', 'static'}
 MUST_CHANGE_ENDPOINTS = {'auth.change_password', 'auth.logout', 'dashboard'}
 # คำขอที่หน้าเว็บยิงเองเป็นระยะ — ไม่นับเป็นการใช้งาน (ไม่งั้น session ไม่มีวันหมดอายุ)
 BACKGROUND_ENDPOINTS = {'monitor_status_api', 'api_dashboard_data', 'phase2.api_backfill_job',
-                        'phase2.api_reminders_today'}
+                        'phase2.api_reminders_today', 'watch.api_status'}
 
 bp = Blueprint('auth', __name__)
 

@@ -246,6 +246,33 @@ def build_reminder_card(kind, person, hospital_name, hospital_logo, theme=None,
     return _bubble(f"⚠️ {txt['title']} - {name}", contents)
 
 
+# ── การ์ดแจ้งเตือนระบบ (ถึง IT alert recipient) ───────────────
+_SYSTEM_ALERT = {
+    'problem':   {'pill': 'ปัญหา', 'start': '#B91C1C', 'end': '#7F1D1D', 'pill_bg': '#FEE2E2', 'pill_fg': '#991B1B'},
+    'recovered': {'pill': 'กลับมาปกติ', 'start': '#15803D', 'end': '#14532D', 'pill_bg': '#DCFCE7', 'pill_fg': '#166534'},
+    'summary':   {'pill': 'สรุป', 'start': '#475569', 'end': '#1E293B', 'pill_bg': '#E2E8F0', 'pill_fg': '#334155'},
+}
+
+
+def build_system_alert_card(kind, title, lines, hospital_name, hospital_logo, now=None):
+    """การ์ดปัญหาของระบบ (Lost scan, การนำเข้าหยุด ฯลฯ) — สีคงที่แยกจากการ์ดเข้า-ออกงานและไม่ขึ้นกับ Theme"""
+    if kind not in _SYSTEM_ALERT:
+        raise ValueError(f'kind ไม่ถูกต้อง: {kind!r}')
+    style = _SYSTEM_ALERT[kind]
+    now = now or datetime.now()
+    hosp, logo_url = _hospital(hospital_name, hospital_logo)
+    contents = [
+        _header('แจ้งเตือนระบบ', hosp, logo_url, style['start'], style['end'], 135,
+                pill=_pill(style['pill'], style['pill_fg'], style['pill_bg'])),
+        {"type": "box", "layout": "vertical", "margin": "lg", "spacing": "sm",
+         "contents": [_text(title, 'md', _INK, weight="bold", wrap=True),
+                      *[_text(ln, 'xs', _MUTED, wrap=True) for ln in (lines or [])]]},
+        _text(f"{now.strftime('%H:%M')} · {thai_date(now)}", 'xxs', _FAINT, margin="md"),
+        *_footer('ระบบแจ้งเตือนการสแกน · ดูรายละเอียดที่หน้า "Scan ที่อาจตกหล่น"', now.strftime('%d/%m/%Y')),
+    ]
+    return _bubble(f'แจ้งเตือนระบบ: {title}', contents)
+
+
 # ── LINE Notify (text) ─────────────────────────────────────────
 def build_line_message(scan_row, hospital_name, backfill=False):
     way = scan_types.direction(scan_row.get('SCAN_TYPE'))

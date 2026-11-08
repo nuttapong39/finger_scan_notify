@@ -14,6 +14,7 @@ from datetime import datetime
 import database
 import hosoffice
 import scan_types
+import scanwatch
 from delivery import deliver_reminder
 
 KINDS = ('checkin', 'checkout')
@@ -82,6 +83,10 @@ def _run_kind(kind, cfg, now, dry_run, ignore_window):
         return {'status': 'weekend'}
     if hosoffice.is_holiday(today):
         return {'status': 'holiday'}
+
+    if not dry_run and scanwatch.import_stalled(now):
+        # Import stall: "ไม่พบ Scan" อาจเป็นเพราะข้อมูลยังไม่ถึง hosoffice ไม่ใช่เพราะลืมสแกน → งดรอบนี้ ไม่ claim ลองใหม่รอบหน้า
+        return {'status': 'import_stall'}
 
     day = today.isoformat()
     tokens = {t['person_id']: t for t in database.get_all_tokens() if t.get('active') and t.get('remind_enabled')}
