@@ -122,6 +122,29 @@
 }
 [data-appearance="cyber"] .layout { position: relative; z-index: 1; }
 
+/* ── เฟส 2: ลายเส้นแบบ Cyber ของหน้าภายใน (สี neon ใช้เป็นสีเน้นเท่านั้น พื้นยังดำ ตัวอักษรหลักยังอ่านง่าย) ── */
+[data-appearance="cyber"] {
+  --neon:      #00ff9c;
+  --neon-tint: rgba(0, 255, 156, .10);
+  --neon-line: rgba(0, 255, 156, .28);
+}
+[data-appearance="cyber"] ::selection { background: var(--neon); color: #03140d; }
+[data-appearance="cyber"] .topbar { box-shadow: 0 1px 0 var(--neon-line); }
+[data-appearance="cyber"] .topbar-title { font-family: var(--font-mono); letter-spacing: .01em; }
+[data-appearance="cyber"] .sidebar { border-right-color: var(--neon-line); }
+[data-appearance="cyber"] .sidebar-logo .app-name { font-family: var(--font-mono); font-size: 13px; letter-spacing: -.01em; }
+[data-appearance="cyber"] .sidebar-nav a.active { background: var(--neon-tint); color: var(--neon); box-shadow: inset 2px 0 0 var(--neon); }
+[data-appearance="cyber"] .card, [data-appearance="cyber"] .stat-card { border-color: var(--border); transition: border-color .15s, box-shadow .15s; }
+[data-appearance="cyber"] .card:hover, [data-appearance="cyber"] .stat-card:hover { border-color: var(--neon-line); box-shadow: 0 0 18px rgba(0, 255, 156, .06); }
+[data-appearance="cyber"] .stat-value { text-shadow: 0 0 12px rgba(0, 255, 156, .25); }
+[data-appearance="cyber"] th { font-family: var(--font-mono); letter-spacing: .04em; border-bottom-color: var(--neon-line); }
+[data-appearance="cyber"] .form-control:focus { border-color: var(--neon); box-shadow: 0 0 0 3px var(--neon-tint), 0 0 14px rgba(0, 255, 156, .15); }
+[data-appearance="cyber"] .btn-primary { background: var(--neon-tint); color: var(--neon); border: 1px solid var(--neon); }
+[data-appearance="cyber"] .btn-primary:hover:not(:disabled) { background: var(--neon); color: #03140d; filter: none; box-shadow: 0 0 16px rgba(0, 255, 156, .4); }
+[data-appearance="cyber"] code { color: var(--neon); }
+[data-appearance="cyber"] { scrollbar-color: var(--border-light) var(--bg-base); }
+
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { color-scheme: light; }
 html[data-appearance="cyber"] { color-scheme: dark; }
