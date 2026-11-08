@@ -22,6 +22,21 @@
 .bf-warn { color: var(--accent-red); font-weight:700; }
 .bf-progress { height:8px; border-radius:4px; background:var(--bg-base); overflow:hidden; margin:10px 0; }
 .bf-progress > div { height:100%; background:var(--accent-blue); width:0; transition:width .3s; }
+.tdp { position:relative; flex:1; min-width:140px; }
+.tdp-btn { width:100%; text-align:left; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.tdp-pop { position:absolute; z-index:50; top:calc(100% + 4px); left:0; width:268px; padding:10px; background:var(--bg-surface); border:1px solid var(--border-light); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.45); }
+.tdp-pop[hidden] { display:none; }
+.tdp-head { display:flex; gap:6px; align-items:center; margin-bottom:8px; }
+.tdp-head select { flex:1; min-width:0; padding:4px 6px; background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border); border-radius:6px; font:inherit; font-size:13px; }
+.tdp-nav { width:28px; height:28px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-primary); border-radius:6px; cursor:pointer; }
+.tdp-nav:disabled { opacity:.35; cursor:default; }
+.tdp-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-align:center; }
+.tdp-dow { font-size:11px; color:var(--text-muted); padding:4px 0; }
+.tdp-day { height:30px; border:0; border-radius:6px; background:transparent; color:var(--text-primary); font:inherit; font-size:13px; cursor:pointer; }
+.tdp-day:hover:not(:disabled) { background:var(--bg-card-hover); }
+.tdp-day:disabled { color:var(--text-muted); opacity:.4; cursor:default; }
+.tdp-day.today { outline:1px solid var(--accent-blue); }
+.tdp-day.sel { background:var(--accent-blue); color:#fff; }
 </style>
 {% endblock %}
 
@@ -33,9 +48,9 @@
     <div class="form-group">
       <label class="form-label">ช่วงวันที่</label>
       <div class="bf-row">
-        <input type="date" id="bf-from" class="form-control" value="{{ today }}" max="{{ today }}" style="flex:1;">
+        <div class="tdp" id="bf-from-box"><input type="hidden" id="bf-from" value="{{ today }}"><button type="button" class="form-control tdp-btn" id="bf-from-btn" aria-haspopup="dialog"></button><div class="tdp-pop" id="bf-from-pop" role="dialog" hidden></div></div>
         <span style="color:var(--text-muted)">ถึง</span>
-        <input type="date" id="bf-to" class="form-control" value="{{ today }}" max="{{ today }}" style="flex:1;">
+        <div class="tdp" id="bf-to-box"><input type="hidden" id="bf-to" value="{{ today }}"><button type="button" class="form-control tdp-btn" id="bf-to-btn" aria-haspopup="dialog"></button><div class="tdp-pop" id="bf-to-pop" role="dialog" hidden></div></div>
       </div>
       <div class="bf-row" style="margin-top:8px;">
         <button class="btn btn-outline btn-sm" data-range="0">วันนี้</button>
@@ -135,7 +150,80 @@
     if (cls) e.className = cls;
     return e;
   }
-  const isoDaysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+  // วันที่ตามเวลาเครื่อง (ไม่ใช้ toISOString เพราะเป็น UTC — ก่อน 07:00 จะได้เมื่อวาน)
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const toIso = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const fromIso = (iso) => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); };
+  const isoDaysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return toIso(d); };
+
+  // ── ปฏิทินภาษาไทย (พ.ศ.) — ไม่พึ่ง CDN, ค่าที่ส่งไป API ยังเป็น ISO (ค.ศ.) ──
+  const TH_MONTHS = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  const TH_MONTHS_SHORT = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const TH_DOW = ['อา','จ','อ','พ','พฤ','ศ','ส'];
+  const thaiText = (iso) => { const d = fromIso(iso); return `${d.getDate()} ${TH_MONTHS_SHORT[d.getMonth()]} ${d.getFullYear() + 543}`; };
+  const MAX_ISO = '{{ today }}';
+  const pickers = {};
+
+  function thaiDatePicker(id, onPick) {
+    const input = $(id), btn = $(id + '-btn'), pop = $(id + '-pop');
+    let viewY, viewM;
+    const maxD = fromIso(MAX_ISO);
+
+    function show() { btn.textContent = ''; btn.append(el('span', thaiText(input.value)), el('span', '📅')); }
+    function setValue(iso, silent) {
+      input.value = iso; show();
+      if (!silent && onPick) onPick(iso);
+    }
+    function close() { pop.hidden = true; }
+
+    function render() {
+      pop.textContent = '';
+      const head = el('div', null, 'tdp-head');
+      const prev = el('button', '‹', 'tdp-nav'), next = el('button', '›', 'tdp-nav');
+      prev.type = next.type = 'button';
+      const mSel = document.createElement('select'), ySel = document.createElement('select');
+      TH_MONTHS.forEach((n, i) => { const o = el('option', n); o.value = i; mSel.append(o); });
+      for (let y = maxD.getFullYear(); y >= maxD.getFullYear() - 10; y--) { const o = el('option', y + 543); o.value = y; ySel.append(o); }
+      mSel.value = viewM; ySel.value = viewY;
+      next.disabled = viewY === maxD.getFullYear() && viewM === maxD.getMonth();
+      const go = (y, m) => {
+        const d = new Date(y, m, 1); viewY = d.getFullYear(); viewM = d.getMonth();
+        if (viewY > maxD.getFullYear() || (viewY === maxD.getFullYear() && viewM > maxD.getMonth())) { viewY = maxD.getFullYear(); viewM = maxD.getMonth(); }
+        render();
+      };
+      prev.addEventListener('click', () => go(viewY, viewM - 1));
+      next.addEventListener('click', () => go(viewY, viewM + 1));
+      mSel.addEventListener('change', () => go(viewY, Number(mSel.value)));
+      ySel.addEventListener('change', () => go(Number(ySel.value), viewM));
+      head.append(prev, mSel, ySel, next);
+      pop.append(head);
+
+      const grid = el('div', null, 'tdp-grid');
+      TH_DOW.forEach(n => grid.append(el('div', n, 'tdp-dow')));
+      const first = new Date(viewY, viewM, 1).getDay(), days = new Date(viewY, viewM + 1, 0).getDate();
+      for (let i = 0; i < first; i++) grid.append(el('span'));
+      for (let d = 1; d <= days; d++) {
+        const iso = toIso(new Date(viewY, viewM, d));
+        const b = el('button', d, 'tdp-day'); b.type = 'button';
+        if (iso > MAX_ISO) b.disabled = true;
+        if (iso === MAX_ISO) b.classList.add('today');
+        if (iso === input.value) b.classList.add('sel');
+        b.addEventListener('click', () => { setValue(iso); close(); });
+        grid.append(b);
+      }
+      pop.append(grid);
+    }
+    btn.addEventListener('click', () => {
+      if (!pop.hidden) { close(); return; }
+      Object.values(pickers).forEach(p => p.close());
+      const d = fromIso(input.value); viewY = d.getFullYear(); viewM = d.getMonth();
+      render(); pop.hidden = false;
+    });
+    document.addEventListener('click', (e) => { if (!$(id + '-box').contains(e.target)) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    show();
+    pickers[id] = { setValue, close };
+  }
 
   // ── ช่วงวันที่ ──
   function rangeWarn() {
@@ -144,10 +232,14 @@
       ? `⚠️ เกิน ${CONFIRM_DAYS} วัน — ตอนส่งต้องพิมพ์ยืนยัน` : '';
     $('bf-range-warn').className = 'form-hint' + ($('bf-range-warn').textContent ? ' bf-warn' : '');
   }
+  // เลือก "จาก" เกิน "ถึง" → ดัน "ถึง" ตาม / เลือก "ถึง" ก่อน "จาก" → ดึง "จาก" ตาม (ช่วงไม่กลับด้าน)
+  thaiDatePicker('bf-from', (iso) => { if ($('bf-to').value < iso) pickers['bf-to'].setValue(iso, true); rangeWarn(); });
+  thaiDatePicker('bf-to', (iso) => { if ($('bf-from').value > iso) pickers['bf-from'].setValue(iso, true); rangeWarn(); });
   document.querySelectorAll('[data-range]').forEach(b => b.addEventListener('click', () => {
-    $('bf-from').value = isoDaysAgo(Number(b.dataset.range)); $('bf-to').value = isoDaysAgo(0); rangeWarn();
+    pickers['bf-from'].setValue(isoDaysAgo(Number(b.dataset.range)), true);
+    pickers['bf-to'].setValue(isoDaysAgo(0), true);
+    rangeWarn();
   }));
-  $('bf-from').addEventListener('change', rangeWarn);
 
   // ── เลือกบุคลากร ──
   const personBoxes = () => [...document.querySelectorAll('#bf-people input[type=checkbox]')];
