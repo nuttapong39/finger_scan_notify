@@ -64,6 +64,15 @@
   const $ = (id) => document.getElementById(id);
   const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
   const KIND = { lost_scan: 'Lost scan', stall: 'การนำเข้าหยุด', old_rows: 'สแกนย้อนหลังเป็นชุด', unexpected_writer: 'ผู้เขียนที่ปิดแล้วกลับมาเขียน' };
+  const rows = (d) => `${d.count} แถว (ID ${d.first_id}–${d.last_id})`;
+  const DETAIL = {
+    lost_scan: (e, who) => `เลข ${e.seq} · ` + (who.length ? who.join(' · ')
+      : `ระหว่างสแกน ${(e.detail.prev_time || '-').slice(-8)} – ${(e.detail.next_time || '-').slice(-8)}`),
+    stall: (e) => `ไม่มีสแกนใหม่ตั้งแต่ ${e.detail.last_new || '-'}`,
+    old_rows: (e) => `${rows(e.detail)} เป็นสแกนเก่าตั้งแต่ ${e.detail.oldest} ถึง ${e.detail.newest}`,
+    unexpected_writer: (e) => `${rows(e.detail)} สร้างโดย ${e.detail.writer}`,
+  };
+  const DONE = { lost_scan: 'เติมแล้ว ', stall: 'เติมแล้ว ', old_rows: 'จบแล้ว ', unexpected_writer: 'จบแล้ว ' };
 
   function badge(text, cls, makeIcon) {
     const b = el('span', null, 'badge ' + cls); if (makeIcon) b.append(makeIcon(), ' '); b.append(text); return b;
@@ -91,18 +100,12 @@
       const tr = el('tr');
       const who = [e.detail.name, e.detail.scan_time ? 'สแกน ' + e.detail.scan_time : null,
                    e.detail.machine != null ? 'เครื่อง ' + e.detail.machine : null].filter(Boolean);
-      const detail = e.kind === 'lost_scan'
-        ? `เลข ${e.seq} · ` + (who.length ? who.join(' · ') : `ระหว่างสแกน ${(e.detail.prev_time || '-').slice(-8)} – ${(e.detail.next_time || '-').slice(-8)}`)
-        : e.kind === 'unexpected_writer'
-          ? `${e.detail.count} แถว (ID ${e.detail.first_id}–${e.detail.last_id}) สร้างโดย ${e.detail.writer}`
-        : e.kind === 'old_rows'
-          ? `${e.detail.count} แถว (ID ${e.detail.first_id}–${e.detail.last_id}) เป็นสแกนเก่าตั้งแต่ ${e.detail.oldest} ถึง ${e.detail.newest}`
-          : `ไม่มีสแกนใหม่ตั้งแต่ ${e.detail.last_new || '-'}`;
+      const detail = (DETAIL[e.kind] || (() => ''))(e, who);
       tr.append(el('td', KIND[e.kind] || e.kind), el('td', detail, null), el('td', e.first_seen));
       const st = el('td');
       st.appendChild(e.open ? badge('ยังค้าง', 'badge-error', () => icon('circle-x'))
                             : e.detail.not_in_source ? badge('ไม่มีที่เครื่อง (รูในการนับ) ' + (e.closed_at || ''), 'badge-muted', () => icon('circle-check'))
-                            : badge((e.kind === 'old_rows' || e.kind === 'unexpected_writer' ? 'จบแล้ว ' : 'เติมแล้ว ') + (e.closed_at || ''), 'badge-success', () => icon('circle-check')));
+                            : badge((DONE[e.kind] || 'เติมแล้ว ') + (e.closed_at || ''), 'badge-success', () => icon('circle-check')));
       const al = el('td'); al.appendChild(e.alerted ? badge('แจ้งแล้ว', 'badge-muted', () => icon('bell')) : badge('ยังไม่แจ้ง', 'badge-muted'));
       tr.append(st, al); tb.appendChild(tr);
     });

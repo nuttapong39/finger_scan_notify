@@ -136,22 +136,22 @@ def get_device_window(n=2000, days=14):
     return [r for r in rows if r['seq'] >= floor]
 
 
-def get_old_device_rows_after(last_id, older_than_hours):
+def get_old_device_rows_after(last_id, older_than_hours, upto_id):
     """สรุป (ไม่คืนข้อมูลบุคคล) ของแถวใหม่ที่ ID > last_id, มาจากเครื่องสแกน (มี Device sequence) แต่เวลาสแกนเก่ากว่า older_than_hours
     → {'count','first_id','last_id','oldest','newest','max_id'} ; ใช้จับการนำเข้าย้อนหลังเป็นชุด (แถว MANUAL/SIGN ไม่มีเลขเครื่อง จึงไม่นับ)"""
     rows = _query(f"SELECT COUNT(*) AS n, MIN(ID) AS first_id, MAX(ID) AS last_id, MIN(SCAN_DATE_TIME) AS oldest, "
-                  f"MAX(SCAN_DATE_TIME) AS newest FROM `{_tbl()}` WHERE ID > %s AND MACHIN_SCAN_ID IS NOT NULL "
-                  f"AND SCAN_DATE_TIME < DATE_SUB(NOW(), INTERVAL %s HOUR)", (int(last_id), int(older_than_hours)))
+                  f"MAX(SCAN_DATE_TIME) AS newest FROM `{_tbl()}` WHERE ID > %s AND ID <= %s AND MACHIN_SCAN_ID IS NOT NULL "
+                  f"AND SCAN_DATE_TIME < DATE_SUB(NOW(), INTERVAL %s HOUR)", (int(last_id), int(upto_id), int(older_than_hours)))
     r = rows[0] if rows else {}
     return {'count': int(r.get('n') or 0), 'first_id': r.get('first_id'), 'last_id': r.get('last_id'),
             'oldest': r.get('oldest'), 'newest': r.get('newest')}
 
 
-def count_new_rows_by_writer(last_id, writer):
-    """จำนวน/ช่วง ID ของแถวใหม่ (ID > last_id) ที่ผู้เขียนนี้สร้าง (CREATE_BY = writer) — ใช้จับผู้เขียนที่ปิดไปแล้วแต่กลับมาเขียน
+def count_new_rows_by_writer(last_id, writer, upto_id):
+    """จำนวน/ช่วง ID ของแถวใหม่ (last_id < ID <= upto_id) ที่ผู้เขียนนี้สร้าง (CREATE_BY = writer) — ใช้จับผู้เขียนที่ปิดไปแล้วแต่กลับมาเขียน
     ช่วง ID ใช้ดัชนี PK ; ห้ามเปลี่ยนเป็น join/EXISTS ซ้อนกับคอลัมน์ที่ไม่มีดัชนี (MACHIN_SCAN_ID) บนฐานข้อมูลจริง"""
     rows = _query(f"SELECT COUNT(*) AS n, MIN(ID) AS first_id, MAX(ID) AS last_id FROM `{_tbl()}` "
-                  f"WHERE ID > %s AND CREATE_BY = %s", (int(last_id), str(writer)))
+                  f"WHERE ID > %s AND ID <= %s AND CREATE_BY = %s", (int(last_id), int(upto_id), str(writer)))
     r = rows[0] if rows else {}
     return {'count': int(r.get('n') or 0), 'first_id': r.get('first_id'), 'last_id': r.get('last_id')}
 

@@ -95,7 +95,7 @@ def test_release_dry_run_summarises_the_count_the_dates_and_the_rows_per_day():
     s = r['summary']
     assert s['count'] == 5 and s['oldest'] == (NOW - timedelta(days=3, minutes=5)).replace(second=14)
     assert s['per_day'] == {'2026-11-05': 2, '2026-11-06': 1, '2026-11-07': 2}
-    assert [x['seq'] for x in r['insert']] == [201, 202, 203, 204, 205] and r['writer'] == 'SCAN-IMPORTER-BACKFILL'
+    assert [x['seq'] for x in r['insert']] == [201, 202, 203, 204, 205] and r['writer'] == 'SCAN-IMPORTER-RELEASED'
 
 
 def test_release_only_takes_the_requested_sequence_range():
@@ -113,3 +113,17 @@ def test_releasing_twice_never_creates_duplicates():
 def test_releasing_an_empty_range_is_a_harmless_empty_plan():
     r = plan.plan_release(HELD, set(), 900, 999)
     assert r['insert'] == [] and r['summary'] == {'count': 0, 'oldest': None, 'newest': None, 'per_day': {}}
+
+
+def test_a_row_dated_in_the_future_beyond_clock_skew_is_held_but_a_small_skew_is_tolerated():
+    ahead_2h = dict(src(101), time=NOW + timedelta(hours=2), device_time=NOW + timedelta(hours=2))
+    ahead_5m = dict(src(102), time=NOW + timedelta(minutes=5), device_time=NOW + timedelta(minutes=5))
+    p = run([ahead_2h, ahead_5m])
+    assert [r['seq'] for r in p['held']] == [101] and [r['seq'] for r in p['insert']] == [102]
+
+
+def test_release_never_writes_a_row_without_a_scan_time_and_reports_it_separately():
+    no_time = {'seq': 301, 'machine': 1, 'person': 7, 'time': None, 'device_time': None}
+    r = plan.plan_release(HELD + [no_time], set(), 201, 305)
+    assert [x['seq'] for x in r['unreleasable']] == [301] and 301 not in [x['seq'] for x in r['insert']]
+    assert r['summary']['count'] == 5

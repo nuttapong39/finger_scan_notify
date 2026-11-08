@@ -43,7 +43,7 @@ def watch(tmp_db, monkeypatch):
     def max_id():
         return None if st['down'] else st['max_id']
 
-    def old_after(last_id, hours):
+    def old_after(last_id, hours, upto_id):
         if st['down']:
             raise hosoffice.HosofficeUnavailable('down')
         if st['old'] and last_id < st['old']['last_id']:       # เหมือน SQL จริง: นับเฉพาะแถวที่ ID เกินจุดที่ตรวจแล้ว
@@ -52,8 +52,8 @@ def watch(tmp_db, monkeypatch):
 
     st['writer'] = None
 
-    def by_writer(last_id, writer):
-        if st['down']:
+    def by_writer(last_id, writer, upto_id):
+        if st['down'] or st.get('writer_down'):
             raise hosoffice.HosofficeUnavailable('down')
         w = st['writer']
         if w and w['writer'] == writer and last_id < w['last_id']:
@@ -438,3 +438,28 @@ def test_scan_watch_check_resumes_from_the_same_point_after_hosoffice_was_down(w
     watch['max_id'], watch['writer'] = 1005, scan_watch_wrote(5)
     scanwatch.run_cycle(at(18, 2))
     assert database.get_watch_events('unexpected_writer')[0]['detail']['count'] == 5
+
+
+def test_when_the_second_query_fails_the_first_result_is_not_counted_twice_next_round(watch):
+    scanwatch.run_cycle(at(18, 0))
+    watch['max_id'], watch['old'] = 1300, flood(300)
+    watch['writer_down'] = True                                               # query แรกสำเร็จ แต่ query ที่สองล้ม
+    scanwatch.run_cycle(at(18, 1))
+    assert database.get_watch_events('old_rows') == [] and database.get_watch_state()['old_check_id'] == 1000
+    watch['writer_down'] = False
+    scanwatch.run_cycle(at(18, 2))
+    assert database.get_watch_events('old_rows')[0]['detail']['count'] == 300
+
+
+def test_an_episode_whose_alert_could_not_be_sent_stays_open_and_is_alerted_later(watch, monkeypatch):
+    real_notify = scanwatch._notify
+    monkeypatch.setattr(scanwatch, '_notify', lambda *a, **k: False)         # แจ้ง IT ไม่ได้ (เช่น LINE ล่ม)
+    scanwatch.run_cycle(at(18, 0))
+    watch['max_id'], watch['writer'] = 1001, scan_watch_wrote(1)
+    scanwatch.run_cycle(at(18, 1))
+    watch['writer'] = None
+    scanwatch.run_cycle(at(18, 20))                                           # เงียบเกิน 10 นาทีแล้ว แต่ยังไม่เคยแจ้งสำเร็จ
+    assert database.get_watch_events('unexpected_writer')[0]['open']
+    monkeypatch.setattr(scanwatch, '_notify', real_notify)
+    scanwatch.run_cycle(at(18, 21))
+    assert len(watch['sent']) == 1 and database.get_watch_events('unexpected_writer')[0]['alerted_at']

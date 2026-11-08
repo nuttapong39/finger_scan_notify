@@ -31,7 +31,7 @@ MAX_LISTED = 8
 OLD_AFTER_H = 24                   # แถวใหม่ที่เวลาสแกนเก่ากว่านี้ = สแกนย้อนหลัง
 OLD_MIN_ROWS = 10                  # ในหนึ่งรอบตรวจมีแถวย้อนหลังตั้งแต่เท่านี้ = นำเข้าย้อนหลังเป็นชุด (ไม่ใช่สแกนที่มาช้าสองสามแถว)
 CLOSED_WRITER = 'SCAN-WATCH'           # ผู้เขียนแถวของ HOSOffice ERP ที่ปิดถาวรแล้ว (เหตุการณ์ 8 พ.ย. 2569) — ถ้ามีแถวใหม่จากมัน = ถูกเปิดกลับ
-OLD_QUIET_S = 10 * 60              # ไม่มีแถวย้อนหลังเพิ่มนานเท่านี้ = ชุดนำเข้าจบ
+EPISODE_QUIET_S = 10 * 60          # ไม่มีแถวใหม่เพิ่มนานเท่านี้ = ชุดนั้นจบ
 EXPECT_DAYS = 5
 
 status = {'running': False, 'last_run': None, 'last_error': None}
@@ -167,8 +167,9 @@ def _send_alerts(now, ts):
 
     for e in (x for x in database.get_watch_events('unexpected_writer') if x['open'] and not x['alerted_at']):
         dd = e['detail']
-        if _notify('problem', f"พบผู้เขียนที่ปิดไปแล้วเขียนแถวอีก ({dd.get('writer', CLOSED_WRITER)})",
-                   [f"แถวใหม่ {dd['count']} แถว (ID {dd['first_id']}–{dd['last_id']}) สร้างโดย {dd.get('writer', CLOSED_WRITER)}",
+        who = dd.get('writer', CLOSED_WRITER)
+        if _notify('problem', f'พบผู้เขียนที่ปิดไปแล้วเขียนแถวอีก ({who})',
+                   [f"แถวใหม่ {dd['count']} แถว (ID {dd['first_id']}–{dd['last_id']}) สร้างโดย {who}",
                     'ตรวจ sys_scan_watch.ENABLED ของ HOSOffice ERP และปิดทันที — ตัวนี้เขียนแถวซ้ำและส่งการ์ดของเก่า (เหตุการณ์ 8 พ.ย.)'], now, ts):
             database.mark_watch_alerted([e['id']], ts)
 
@@ -220,17 +221,20 @@ def check_old_rows(ts):
     if last is None or last > max_id:                  # รอบแรก / ตารางถูกกู้คืนจนเลขลดลง → เริ่มนับใหม่ที่ปัจจุบัน
         database.save_watch_state(old_check_id=max_id)
         return
-    # ถามทั้งสองอย่างก่อนค่อยอัปเดตสถานะ: ถ้า hosoffice ล่มกลางรอบ จุดที่ตรวจยังไม่ขยับ รอบหน้านับใหม่ทั้งหมดไม่ซ้ำ
-    old = hosoffice.get_old_device_rows_after(last, OLD_AFTER_H)
-    writer = hosoffice.count_new_rows_by_writer(last, CLOSED_WRITER)
-    database.save_watch_state(old_check_id=max_id)
-    _track_episode('old_rows', old['count'], OLD_MIN_ROWS,
-                   {'oldest': _fmt_day(old['oldest']), 'newest': _fmt_day(old['newest'])}, old, ts)
-    _track_episode('unexpected_writer', writer['count'], 1, {'writer': CLOSED_WRITER}, writer, ts)
+    # ถามทั้งสองอย่างก่อนค่อยบันทึก และเพดานช่วงคือ max_id ที่อ่านไว้ (แถวที่เข้ามาระหว่างรอบไปนับรอบหน้า ไม่นับซ้ำ)
+    old = hosoffice.get_old_device_rows_after(last, OLD_AFTER_H, max_id)
+    writer = hosoffice.count_new_rows_by_writer(last, CLOSED_WRITER, max_id)
+    _track_episode('old_rows', old, OLD_MIN_ROWS, ts,
+                   extra={'oldest': _fmt_day(old['oldest']), 'newest': _fmt_day(old['newest'])})
+    _track_episode('unexpected_writer', writer, 1, ts, extra={'writer': CLOSED_WRITER}, recovery_card=False)
+    database.save_watch_state(old_check_id=max_id)        # บันทึกจุดหลังบันทึกเหตุการณ์: พลาดแล้วนับซ้ำได้ ดีกว่าทำเหตุการณ์หาย
 
 
-def _track_episode(kind, count, min_rows, extra, r, ts):
-    """ชุดเหตุการณ์ที่ไหลต่อเนื่อง: เปิดเมื่อรอบเดียวมีถึงเกณฑ์ ; ชุดเดิมที่ยังเปิดอยู่รวมแถวใหม่เข้าเหตุการณ์เดิมเสมอ ; ปิดเมื่อเงียบเกิน 10 นาที"""
+def _track_episode(kind, r, min_rows, ts, *, extra=None, recovery_card=True):
+    """ชุดเหตุการณ์ที่ไหลต่อเนื่อง: เปิดเมื่อรอบเดียวมีถึงเกณฑ์ ; ชุดเดิมที่ยังเปิดอยู่รวมแถวใหม่เข้าเหตุการณ์เดิมเสมอ ;
+    ปิดเมื่อเงียบเกิน EPISODE_QUIET_S **และแจ้ง IT สำเร็จแล้ว** (ส่งไม่สำเร็จ = ยังเปิดค้างจนกว่าจะแจ้งได้ ไม่ปิดเงียบ ๆ)
+    recovery_card=False : ไม่ส่งการ์ด "กลับมาปกติ" ตอนปิด (แจ้งครั้งเดียวพอ)"""
+    count = r['count']
     open_ev = database.get_watch_events(kind, open_only=True)
     if open_ev and count:
         d = dict(open_ev[0]['detail'], last_id=r['last_id'], last_at=ts)
@@ -238,11 +242,11 @@ def _track_episode(kind, count, min_rows, extra, r, ts):
         database.update_watch_event_detail(open_ev[0]['id'], d)
     elif not open_ev and count >= min_rows:
         database.open_watch_event(kind, r['first_id'], {'count': count, 'first_id': r['first_id'], 'last_id': r['last_id'],
-                                                         'last_at': ts, **extra}, ts)
-    elif open_ev and ts - open_ev[0]['detail'].get('last_at', ts) >= OLD_QUIET_S:
+                                                         'last_at': ts, **(extra or {})}, ts)
+    elif open_ev and open_ev[0]['alerted_at'] and ts - open_ev[0]['detail'].get('last_at', ts) >= EPISODE_QUIET_S:
         database.close_watch_events([open_ev[0]['id']], ts)
-        if kind == 'unexpected_writer':
-            database.mark_watch_recovery_notified([open_ev[0]['id']])      # แจ้งครั้งเดียวพอ ไม่ต้องส่ง "กลับมาปกติ"
+        if not recovery_card:
+            database.mark_watch_recovery_notified([open_ev[0]['id']])
 
 
 # ── ฐานข้อมูลเครื่องสแกน (ช่วง C) ──────────────────────────────
