@@ -38,6 +38,20 @@ def watch(tmp_db, monkeypatch):
         return list(st['rows'])
 
     monkeypatch.setattr(hosoffice, 'get_device_window', window)
+    st.update(max_id=1000, old=None)
+
+    def max_id():
+        return None if st['down'] else st['max_id']
+
+    def old_after(last_id, hours):
+        if st['down']:
+            raise hosoffice.HosofficeUnavailable('down')
+        if st['old'] and last_id < st['old']['last_id']:       # เหมือน SQL จริง: นับเฉพาะแถวที่ ID เกินจุดที่ตรวจแล้ว
+            return st['old']
+        return {'count': 0, 'first_id': None, 'last_id': None, 'oldest': None, 'newest': None}
+
+    monkeypatch.setattr(hosoffice, 'get_max_scan_id', max_id)
+    monkeypatch.setattr(hosoffice, 'get_old_device_rows_after', old_after)
     monkeypatch.setattr(hosoffice, 'is_holiday', lambda d: st['holiday'])
     monkeypatch.setattr(notifier.requests, 'post',
                         lambda url, **kw: st['sent'].append(kw['data'].decode('utf-8')) or Resp())
@@ -303,3 +317,67 @@ def test_no_morning_summary_when_the_app_only_starts_in_the_afternoon(watch):
     assert len(watch['sent']) == 1
     scanwatch.run_cycle(at(15, 0))                               # restart ตอนบ่าย: สรุปเช้าหมดเวลาแล้ว
     assert len(watch['sent']) == 1
+
+
+# ── แถวย้อนหลังเข้ามาเป็นชุด (เหตุการณ์ 8 พ.ย. 2569) ─────────────────
+def flood(n, first=1001):
+    return {'count': n, 'first_id': first, 'last_id': first + n - 1,
+            'oldest': datetime(2025, 5, 3), 'newest': datetime(2026, 11, 5)}
+
+
+def test_the_first_cycle_only_sets_the_starting_point_and_never_flags_old_history(watch):
+    watch['old'] = flood(6564)
+    scanwatch.run_cycle(at(18, 0))
+    assert database.get_watch_events('old_rows') == [] and watch['sent'] == []
+    assert database.get_watch_state()['old_check_id'] == 1000
+
+
+def test_a_big_batch_of_old_dated_rows_alerts_it_immediately_once(watch):
+    scanwatch.run_cycle(at(18, 0))
+    watch['max_id'], watch['old'] = 7564, flood(6564)
+    scanwatch.run_cycle(at(18, 1))
+    scanwatch.run_cycle(at(18, 2))
+    assert len(watch['sent']) == 1
+    ev = database.get_watch_events('old_rows')
+    assert len(ev) == 1 and ev[0]['detail']['count'] == 6564 and ev[0]['alerted_at']
+    assert '6564' in texts(watch)[0] or 'ย้อนหลัง' in texts(watch)[0]
+
+
+def test_a_handful_of_late_rows_is_not_a_batch(watch):
+    scanwatch.run_cycle(at(18, 0))
+    watch['max_id'], watch['old'] = 1005, flood(5)
+    scanwatch.run_cycle(at(18, 1))
+    assert database.get_watch_events('old_rows') == [] and watch['sent'] == []
+
+
+def test_the_batch_that_keeps_flowing_is_one_event_and_ends_after_ten_quiet_minutes(watch):
+    scanwatch.run_cycle(at(18, 0))
+    watch['max_id'], watch['old'] = 1400, flood(400)
+    scanwatch.run_cycle(at(18, 1))
+    watch['max_id'], watch['old'] = 1450, flood(50, first=1401)               # รอบถัดมาน้อยกว่าเกณฑ์ แต่ชุดเดิมยังไหลอยู่
+    scanwatch.run_cycle(at(18, 2))
+    ev = database.get_watch_events('old_rows')
+    assert len(ev) == 1 and ev[0]['detail']['count'] == 450 and ev[0]['open']
+    watch['old'] = None
+    scanwatch.run_cycle(at(18, 8))
+    assert database.get_watch_events('old_rows')[0]['open']
+    scanwatch.run_cycle(at(18, 13))
+    assert not database.get_watch_events('old_rows')[0]['open']
+    assert len(watch['sent']) == 2 and 'หยุดเข้า' in texts(watch)[1]
+
+
+def test_old_row_check_is_skipped_when_hosoffice_is_down_and_resumes_from_the_same_point(watch):
+    scanwatch.run_cycle(at(18, 0))
+    watch['down'] = True
+    scanwatch.run_cycle(at(18, 1))
+    watch['down'] = False
+    watch['max_id'], watch['old'] = 1300, flood(300)
+    scanwatch.run_cycle(at(18, 2))
+    assert database.get_watch_events('old_rows')[0]['detail']['count'] == 300
+
+
+def test_a_restored_table_with_lower_ids_restarts_the_starting_point(watch):
+    scanwatch.run_cycle(at(18, 0))
+    watch['max_id'] = 500
+    scanwatch.run_cycle(at(18, 1))
+    assert database.get_watch_state()['old_check_id'] == 500

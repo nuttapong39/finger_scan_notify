@@ -220,7 +220,8 @@ def init_db():
         stalled INTEGER NOT NULL DEFAULT 0, summary_date TEXT, alert_fail_at REAL, alert_log_at REAL
     )""")
     have = [r[1] for r in c.execute("PRAGMA table_info(scan_watch_state)").fetchall()]
-    for col, kind in (('alert_log_at', 'REAL'), ('tiger_error', 'TEXT'), ('tiger_max_seq', 'INTEGER'), ('behind_since', 'REAL')):
+    for col, kind in (('alert_log_at', 'REAL'), ('tiger_error', 'TEXT'), ('tiger_max_seq', 'INTEGER'), ('behind_since', 'REAL'),
+                      ('old_check_id', 'INTEGER')):
         if col not in have:
             c.execute(f"ALTER TABLE scan_watch_state ADD COLUMN {col} {kind}")
     c.execute("INSERT OR IGNORE INTO scan_watch_state (id) VALUES (1)")
@@ -464,7 +465,7 @@ def get_delivery_records(scan_ids):
 
 # ── Lost scan / Import stall ──────────────────────────────────
 _WATCH_FIELDS = ('it_person_id', 'max_seq', 'last_new_at', 'last_poll_at', 'last_error', 'stalled',
-                 'summary_date', 'alert_fail_at', 'alert_log_at', 'tiger_error', 'tiger_max_seq', 'behind_since')
+                 'summary_date', 'alert_fail_at', 'alert_log_at', 'tiger_error', 'tiger_max_seq', 'behind_since', 'old_check_id')
 
 
 def get_watch_state():

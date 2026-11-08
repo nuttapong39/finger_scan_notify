@@ -28,6 +28,9 @@ MAX_GAP = 100                      # ช่องว่างใหญ่กว�
 RETRY_ALERT_S = 180                # แจ้ง IT ไม่สำเร็จ: รออย่างน้อยเท่านี้ก่อนลองใหม่
 SUMMARY_UNTIL = '10:30'            # เลยเวลานี้ (เช่น restart ตอนบ่าย) ไม่ส่งสรุปเช้าของวันนั้นแล้ว
 MAX_LISTED = 8
+OLD_AFTER_H = 24                   # แถวใหม่ที่เวลาสแกนเก่ากว่านี้ = สแกนย้อนหลัง
+OLD_MIN_ROWS = 10                  # ในหนึ่งรอบตรวจมีแถวย้อนหลังตั้งแต่เท่านี้ = นำเข้าย้อนหลังเป็นชุด (ไม่ใช่สแกนที่มาช้าสองสามแถว)
+OLD_QUIET_S = 10 * 60              # ไม่มีแถวย้อนหลังเพิ่มนานเท่านี้ = ชุดนำเข้าจบ
 EXPECT_DAYS = 5
 
 status = {'running': False, 'last_run': None, 'last_error': None}
@@ -148,6 +151,19 @@ def _send_alerts(now, ts):
                     'การเตือนยังไม่สแกนถูกงดไว้ชั่วคราวจนกว่าข้อมูลจะกลับมา'], now, ts):
             database.mark_watch_alerted([e['id']], ts)
 
+    for e in (x for x in database.get_watch_events('old_rows') if x['open'] and not x['alerted_at']):
+        d = e['detail']
+        if _notify('problem', 'พบสแกนย้อนหลังเข้า hosoffice เป็นชุด',
+                   [f"แถวใหม่ {d['count']} แถว (ID {d['first_id']}–{d['last_id']}) เป็นสแกนเก่าตั้งแต่ {d['oldest']} ถึง {d['newest']}",
+                    'ระบบอื่นที่แจ้งเตือนตามแถวใหม่โดยไม่ดูอายุสแกน (เช่นตัวเฝ้าของ HOSOffice ERP) อาจส่งการ์ดของเก่าถึงบุคลากร — ตรวจและปิดตัวนั้นก่อน',
+                    'แอปนี้ข้ามสแกนเก่ากว่า 180 นาทีเอง จึงไม่ส่งการ์ดย้อนหลัง'], now, ts):
+            database.mark_watch_alerted([e['id']], ts)
+    for e in (x for x in database.get_watch_events('old_rows') if not x['open'] and x['alerted_at'] and not x['recovery_notified']):
+        d = e['detail']
+        if _notify('recovered', 'สแกนย้อนหลังหยุดเข้าแล้ว',
+                   [f"รวม {d['count']} แถว (ID {d['first_id']}–{d['last_id']}) ให้ HR ตัดสินว่าจะเก็บไว้หรือไม่"], now, ts):
+            database.mark_watch_recovery_notified([e['id']])
+
     pending_open = [e for e in lost if e['open'] and e['alerted_at']]
     recovered = [e for e in lost if not e['open'] and e['alerted_at'] and not e['recovery_notified']]
     if recovered and not pending_open and _notify(
@@ -178,6 +194,37 @@ def _send_summary(now, ts, open_lost, open_stall):
         lines.append('การนำเข้าสแกนยังหยุดอยู่')
     if _notify('summary', f'สรุปเช้า: ยังมีเรื่องค้าง {len(open_lost) + len(open_stall)} รายการ', lines, now, ts):
         database.save_watch_state(summary_date=today)
+
+
+# ── แถวย้อนหลังเข้ามาเป็นชุด (เหตุการณ์ 8 พ.ย. 2569) ─────────────────
+def _fmt_day(d):
+    return d.strftime('%d/%m/%Y') if hasattr(d, 'strftime') else str(d or '-')
+
+
+def check_old_rows(ts):
+    """แถวใหม่ (ID เกินจุดที่ตรวจแล้ว) จากเครื่องสแกนที่เวลาสแกนเก่ากว่า 24 ชม. เป็นชุดใหญ่ = มีการนำเข้าย้อนหลัง
+    ระบบอื่นที่แจ้งเตือนตาม "แถวใหม่" โดยไม่ดูอายุสแกน (เช่นตัวเฝ้าของ HOSOffice ERP) จะส่งการ์ดของเก่าตามเป็นร้อยใบ → แจ้ง IT ทันที
+    อ่านอย่างเดียว ไม่ตัดสินว่าแถวถูกหรือผิด รอบแรก = ตั้งจุดเริ่มที่ ID ล่าสุด (ไม่ตีความประวัติเดิมว่าเป็นเหตุการณ์)"""
+    max_id = hosoffice.get_max_scan_id()
+    if max_id is None:
+        return
+    last = database.get_watch_state()['old_check_id']
+    if last is None or last > max_id:                  # รอบแรก / ตารางถูกกู้คืนจนเลขลดลง → เริ่มนับใหม่ที่ปัจจุบัน
+        database.save_watch_state(old_check_id=max_id)
+        return
+    r = hosoffice.get_old_device_rows_after(last, OLD_AFTER_H)
+    database.save_watch_state(old_check_id=max_id)
+    open_ev = database.get_watch_events('old_rows', open_only=True)
+    if open_ev and r['count']:                         # ชุดเดิมยังไหลอยู่: รวมเข้าเหตุการณ์เดิม (แม้รอบนี้น้อยกว่าเกณฑ์)
+        d = dict(open_ev[0]['detail'], last_id=r['last_id'], last_at=ts)
+        d['count'] = d.get('count', 0) + r['count']
+        database.update_watch_event_detail(open_ev[0]['id'], d)
+    elif not open_ev and r['count'] >= OLD_MIN_ROWS:
+        database.open_watch_event('old_rows', r['first_id'],
+                                  {'count': r['count'], 'first_id': r['first_id'], 'last_id': r['last_id'],
+                                   'oldest': _fmt_day(r['oldest']), 'newest': _fmt_day(r['newest']), 'last_at': ts}, ts)
+    elif open_ev and ts - open_ev[0]['detail'].get('last_at', ts) >= OLD_QUIET_S:
+        database.close_watch_events([open_ev[0]['id']], ts)
 
 
 # ── ฐานข้อมูลเครื่องสแกน (ช่วง C) ──────────────────────────────
@@ -261,6 +308,11 @@ def run_cycle(now=None):
             _identify(ts, present)
         except Exception as e:   # noqa: BLE001 — ส่วนเสริม: ไม่ว่าพังแบบไหนห้ามทำให้รอบตรวจหลักล้ม
             tiger_error = str(e)[:300]
+
+    try:
+        check_old_rows(ts)
+    except hosoffice.HosofficeUnavailable:
+        pass                                  # ตรวจรอบหน้า (จุดที่ตรวจแล้วไม่ขยับ)
 
     cfgs = database.get_reminder_config()
     if src_max is not None:

@@ -136,6 +136,17 @@ def get_device_window(n=2000, days=14):
     return [r for r in rows if r['seq'] >= floor]
 
 
+def get_old_device_rows_after(last_id, older_than_hours):
+    """สรุป (ไม่คืนข้อมูลบุคคล) ของแถวใหม่ที่ ID > last_id, มาจากเครื่องสแกน (มี Device sequence) แต่เวลาสแกนเก่ากว่า older_than_hours
+    → {'count','first_id','last_id','oldest','newest','max_id'} ; ใช้จับการนำเข้าย้อนหลังเป็นชุด (แถว MANUAL/SIGN ไม่มีเลขเครื่อง จึงไม่นับ)"""
+    rows = _query(f"SELECT COUNT(*) AS n, MIN(ID) AS first_id, MAX(ID) AS last_id, MIN(SCAN_DATE_TIME) AS oldest, "
+                  f"MAX(SCAN_DATE_TIME) AS newest FROM `{_tbl()}` WHERE ID > %s AND MACHIN_SCAN_ID IS NOT NULL "
+                  f"AND SCAN_DATE_TIME < DATE_SUB(NOW(), INTERVAL %s HOUR)", (int(last_id), int(older_than_hours)))
+    r = rows[0] if rows else {}
+    return {'count': int(r.get('n') or 0), 'first_id': r.get('first_id'), 'last_id': r.get('last_id'),
+            'oldest': r.get('oldest'), 'newest': r.get('newest')}
+
+
 def get_duplicate_device_sequences(days=60):
     """แถวที่ใช้ Device sequence + เครื่องเดียวกันมากกว่า 1 แถว (นำเข้าซ้ำ) เรียงตามเลข/เวลา — ให้ HR ยืนยันก่อนลบ"""
     return _query(f"SELECT f.ID, f.MACHIN_SCAN_ID AS seq, f.MACHIN_ID AS machine, f.PERSON_ID, f.HR_FULLNAME, f.SCAN_DATE_TIME "
