@@ -217,8 +217,10 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS scan_watch_state (
         id INTEGER PRIMARY KEY CHECK (id = 1), it_person_id INTEGER NOT NULL DEFAULT 156,
         max_seq INTEGER, last_new_at REAL, last_poll_at REAL, last_error TEXT,
-        stalled INTEGER NOT NULL DEFAULT 0, summary_date TEXT, alert_fail_at REAL
+        stalled INTEGER NOT NULL DEFAULT 0, summary_date TEXT, alert_fail_at REAL, alert_log_at REAL
     )""")
+    if 'alert_log_at' not in [r[1] for r in c.execute("PRAGMA table_info(scan_watch_state)").fetchall()]:
+        c.execute("ALTER TABLE scan_watch_state ADD COLUMN alert_log_at REAL")
     c.execute("INSERT OR IGNORE INTO scan_watch_state (id) VALUES (1)")
     c.execute("""CREATE TABLE IF NOT EXISTS watch_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, seq INTEGER, detail TEXT,
@@ -460,7 +462,7 @@ def get_delivery_records(scan_ids):
 
 # ── Lost scan / Import stall ──────────────────────────────────
 _WATCH_FIELDS = ('it_person_id', 'max_seq', 'last_new_at', 'last_poll_at', 'last_error', 'stalled',
-                 'summary_date', 'alert_fail_at')
+                 'summary_date', 'alert_fail_at', 'alert_log_at')
 
 
 def get_watch_state():

@@ -9,7 +9,7 @@ Fail closed: ต่อ hosoffice ไม่ได้ = ไม่เปิด/ป�
 """
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import database
 import delivery
@@ -23,6 +23,9 @@ STALL_LEAD_MIN = 30                # ช่วงเฝ้าเริ่ม 30 
 MIN_EXPECTED = 3                   # ปกติช่วงเวลาเดียวกันต้องมีสแกนเฉลี่ยอย่างน้อยเท่านี้ ถึงนับว่า "เงียบผิดปกติ"
 FRESH_S = 5 * 60                   # ผลตรวจเก่ากว่านี้ = ไม่รู้สถานะ (ไม่ตีความว่าหยุด)
 SUMMARY_AT = '07:30'
+MAX_GAP = 100                      # ช่องว่างใหญ่กว่านี้ถือว่าเลขกระโดด/เริ่มนับใหม่ ไม่ใช่ scan หาย (กันเหตุการณ์ท่วม)
+RETRY_ALERT_S = 180                # แจ้ง IT ไม่สำเร็จ: รออย่างน้อยเท่านี้ก่อนลองใหม่
+SUMMARY_UNTIL = '10:30'            # เลยเวลานี้ (เช่น restart ตอนบ่าย) ไม่ส่งสรุปเช้าของวันนั้นแล้ว
 MAX_LISTED = 8
 EXPECT_DAYS = 5
 
@@ -30,14 +33,17 @@ status = {'running': False, 'last_run': None, 'last_error': None}
 
 
 # ── ฟังก์ชันล้วน ──────────────────────────────────────────────
-def find_gaps(rows):
-    """rows: [{'seq','time',...}] → เลขที่ขาดระหว่างเลขต่ำสุดกับสูงสุดที่มี พร้อมเวลาของแถวก่อน/หลัง"""
+def find_gaps(rows, max_gap=MAX_GAP):
+    """rows: [{'seq','time',...}] → เลขที่ขาดระหว่างเลขต่ำสุดกับสูงสุดที่มี พร้อมเวลาของแถวก่อน/หลัง
+    ช่องว่างที่กว้างเกิน max_gap เลขข้ามไป (เลขกระโดด ไม่ใช่การสแกนที่หาย)"""
     first_time = {}
     for r in sorted(rows, key=lambda r: (r['seq'], r['time'])):
         first_time.setdefault(r['seq'], r['time'])
     seqs = sorted(first_time)
     gaps = []
     for prev, nxt in zip(seqs, seqs[1:]):
+        if nxt - prev - 1 > max_gap:
+            continue
         for missing in range(prev + 1, nxt):
             gaps.append({'seq': missing, 'prev_time': first_time[prev], 'next_time': first_time[nxt]})
     return gaps
@@ -47,19 +53,18 @@ def expected_scans(rows, since, now, days=EXPECT_DAYS):
     """สแกนเฉลี่ยที่ "ปกติควรมา" ในช่วง since→now: นับจากวันทำงานก่อนหน้าที่มีข้อมูล ในช่วงนาฬิกาเดียวกัน
     (ข้ามเที่ยงคืนได้) — เช้า 09:30 ที่ไม่มีเลขใหม่ตั้งแต่ 08:05 จะได้ค่าสูง (ช่วงนั้นปกติคนสแกนเยอะ)
     แต่ช่วงบ่ายที่เงียบอยู่แล้วได้ค่าต่ำ จึงไม่ตีความความเงียบปกติว่าการนำเข้าหยุด"""
-    same_day = since.date() == now.date()
+    if since.date() != now.date():
+        # เงียบข้ามวัน: ดูแค่ช่วง 20 นาทีล่าสุดของวันนี้ (ไม่รวมหางของเมื่อวาน) — "ปกติเวลานี้ต้องมีคนสแกน แต่ไม่มีมาตั้งแต่เมื่อวาน"
+        since = now - timedelta(minutes=STALL_AFTER_S // 60)
     start, end = since.time(), now.time()
-    if same_day and start > end:
+    if start > end:
         return 0.0
     workdays = sorted({r['time'].date() for r in rows
                        if r['time'].date() < now.date() and r['time'].weekday() < 5}, reverse=True)[:days]
     if not workdays:
         return 0.0
     chosen = set(workdays)
-    def inside(t):
-        return start <= t <= end if same_day else (t >= start or t <= end)
-
-    n = sum(1 for r in rows if r['time'].date() in chosen and inside(r['time'].time()))
+    n = sum(1 for r in rows if r['time'].date() in chosen and start <= r['time'].time() <= end)
     return n / len(workdays)
 
 
@@ -90,6 +95,8 @@ def import_stalled(now):
 # ── การแจ้ง IT ───────────────────────────────────────────────
 def _notify(kind, title, lines, now, ts):
     st = database.get_watch_state()
+    if st['alert_fail_at'] and 0 <= ts - st['alert_fail_at'] < RETRY_ALERT_S:
+        return False
     token = database.get_token_by_person_id(st['it_person_id'])
     if token:
         ok, _, why = delivery.deliver_system_alert(kind, title, lines, token, now=now)
@@ -97,9 +104,10 @@ def _notify(kind, title, lines, now, ts):
             return True
     else:
         why = 'no_token'
-    if not st['alert_fail_at'] or ts - st['alert_fail_at'] > 3600:      # ส่งไม่ได้: ลองใหม่ทุกรอบ แต่บันทึกชั่วโมงละครั้ง
+    if not st['alert_log_at'] or ts - st['alert_log_at'] > 3600:       # ส่งไม่ได้: พัก 3 นาทีแล้วลองใหม่ แต่บันทึกชั่วโมงละครั้ง
         database.add_guard_event('it_alert_undeliverable', f'ส่งแจ้ง IT (person {st["it_person_id"]}) ไม่ได้: {why}')
-        database.save_watch_state(alert_fail_at=ts)
+        database.save_watch_state(alert_log_at=ts)
+    database.save_watch_state(alert_fail_at=ts)
     return False
 
 
@@ -148,7 +156,11 @@ def _send_alerts(now, ts):
 
 def _send_summary(now, ts, open_lost, open_stall):
     today = now.date().isoformat()
-    if now.strftime('%H:%M') < SUMMARY_AT or database.get_watch_state()['summary_date'] == today:
+    hm = now.strftime('%H:%M')
+    if hm < SUMMARY_AT or database.get_watch_state()['summary_date'] == today:
+        return
+    if hm > SUMMARY_UNTIL:
+        database.save_watch_state(summary_date=today)
         return
     if not open_lost and not open_stall:
         database.save_watch_state(summary_date=today)
@@ -183,11 +195,15 @@ def run_cycle(now=None):
         last_new_at = min(ts, latest.timestamp())
 
     present = {r['seq'] for r in rows}
+    floor = min(present) if present else None
     for g in find_gaps(rows):
         database.open_watch_event('lost_scan', g['seq'],
                                   {'prev_time': _fmt(g['prev_time']), 'next_time': _fmt(g['next_time'])}, ts)
-    database.close_watch_events([e['id'] for e in database.get_watch_events('lost_scan', open_only=True)
-                                 if e['seq'] in present], ts)
+    open_lost = database.get_watch_events('lost_scan', open_only=True)
+    database.close_watch_events([e['id'] for e in open_lost if e['seq'] in present], ts)
+    expired = [e['id'] for e in open_lost if floor is not None and e['seq'] < floor]       # เลื่อนพ้นหน้าต่างแล้ว ตรวจไม่ได้อีก
+    database.close_watch_events(expired, ts)
+    database.mark_watch_recovery_notified(expired)
 
     cfgs = database.get_reminder_config()
     stalled = ((not new_data or first_poll) and in_watch_window(cfgs, now) and ts - last_new_at >= STALL_AFTER_S

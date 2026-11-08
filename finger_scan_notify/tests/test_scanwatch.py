@@ -86,7 +86,8 @@ def test_expected_scans_is_the_average_for_the_same_clock_slot_on_earlier_workda
 def test_expected_scans_covers_a_stretch_that_crosses_midnight():
     rows, _ = history()
     since = at(16, 50, day=FRI - timedelta(days=1))                           # เงียบตั้งแต่เย็นวานจนเช้านี้
-    assert scanwatch.expected_scans(rows, since, at(10, 11)) == 8.0           # เย็น 4 + เช้า 4 ต่อวัน
+    assert scanwatch.expected_scans(rows, since, at(10, 11)) == 4.0           # ดูแค่ 20 นาทีล่าสุดของวันนี้ ไม่รวมหางเมื่อวาน
+    assert scanwatch.expected_scans(rows, since, at(7, 30)) == 0.0            # ก่อนคนมาทำงาน เช้าเงียบเป็นปกติ
 
 
 # ── Lost scan ────────────────────────────────────────────────
@@ -161,6 +162,39 @@ def test_when_it_cannot_be_reached_the_alert_is_retried_not_lost(watch):
     assert database.get_watch_events('lost_scan')[0]['alerted_at'] is None
     database.save_token(156, 'ผู้ดูแลระบบ', 'MOPH_ALERT', '', 'ck', 'sk', 'IT', 1, 1)
     scanwatch.run_cycle(at(8, 25))
+    assert len(watch['sent']) == 1
+
+
+def test_a_huge_jump_in_the_sequence_is_not_reported_as_thousands_of_lost_scans(watch):
+    watch['rows'] = [row(1, at(8, 0)), row(2, at(8, 1)), row(900000, at(8, 2)), row(900002, at(8, 3))]
+    assert [g['seq'] for g in scanwatch.find_gaps(watch['rows'])] == [900001]
+    scanwatch.run_cycle(at(8, 5))
+    assert [e['seq'] for e in database.get_watch_events('lost_scan')] == [900001]
+
+
+def test_a_lost_scan_that_scrolls_out_of_the_window_is_closed_without_saying_recovered(watch):
+    watch['rows'] = [row(10, at(8, 0)), row(12, at(8, 2))]
+    scanwatch.run_cycle(at(8, 5))
+    scanwatch.run_cycle(at(8, 21))
+    assert len(watch['sent']) == 1
+    watch['rows'] = [row(20, at(8, 30)), row(21, at(8, 31))]                  # เลข 11 หลุดพ้นหน้าต่างตรวจ
+    scanwatch.run_cycle(at(8, 40))
+    assert [e['open'] for e in database.get_watch_events('lost_scan')] == [False]
+    assert len(watch['sent']) == 1
+
+
+def test_a_failed_alert_is_retried_only_after_a_pause_and_logged_once_per_hour(watch):
+    database.delete_token(database.get_token_by_person_id(156)['id'])
+    watch['rows'] = [row(1, at(8, 0)), row(3, at(8, 2))]
+    scanwatch.run_cycle(at(8, 5))
+    for minute in (21, 22, 23, 25, 30, 40):
+        scanwatch.run_cycle(at(8, minute))
+    fails = [e for e in database.get_guard_events() if e['kind'] == 'it_alert_undeliverable']
+    assert len(fails) == 1
+    database.save_token(156, 'IT', 'MOPH_ALERT', '', 'ck', 'sk', '', 1, 1)
+    scanwatch.run_cycle(at(8, 41))                                            # ยังอยู่ในช่วงพักจากความล้มเหลวครั้งล่าสุด (8:40)
+    assert watch['sent'] == []
+    scanwatch.run_cycle(at(8, 44))
     assert len(watch['sent']) == 1
 
 
@@ -260,3 +294,12 @@ def test_starting_the_watcher_after_the_data_already_stopped_is_detected_immedia
     watch['rows'] = rows + [row(nxt, at(9, 30))]                              # สแกนล่าสุด 09:30 แล้วเงียบ
     scanwatch.run_cycle(at(10, 10))                                           # เพิ่งเปิดแอป ไม่ต้องรอ 20 นาทีใหม่
     assert scanwatch.import_stalled(at(10, 10)) is True
+
+
+def test_no_morning_summary_when_the_app_only_starts_in_the_afternoon(watch):
+    watch['rows'] = [row(1, at(6, 0)), row(3, at(6, 2))]
+    scanwatch.run_cycle(at(6, 5))
+    scanwatch.run_cycle(at(6, 30))
+    assert len(watch['sent']) == 1
+    scanwatch.run_cycle(at(15, 0))                               # restart ตอนบ่าย: สรุปเช้าหมดเวลาแล้ว
+    assert len(watch['sent']) == 1
