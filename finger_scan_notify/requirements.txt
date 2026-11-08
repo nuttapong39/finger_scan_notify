@@ -3,4 +3,4 @@ mysql-connector-python==9.0.0
 requests==2.32.3
 python-dotenv==1.0.1
 waitress==3.0.2
-pymssql==2.3.2
+pymssql==2.4.6
