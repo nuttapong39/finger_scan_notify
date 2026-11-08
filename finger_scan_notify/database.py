@@ -219,8 +219,10 @@ def init_db():
         max_seq INTEGER, last_new_at REAL, last_poll_at REAL, last_error TEXT,
         stalled INTEGER NOT NULL DEFAULT 0, summary_date TEXT, alert_fail_at REAL, alert_log_at REAL
     )""")
-    if 'alert_log_at' not in [r[1] for r in c.execute("PRAGMA table_info(scan_watch_state)").fetchall()]:
-        c.execute("ALTER TABLE scan_watch_state ADD COLUMN alert_log_at REAL")
+    have = [r[1] for r in c.execute("PRAGMA table_info(scan_watch_state)").fetchall()]
+    for col, kind in (('alert_log_at', 'REAL'), ('tiger_error', 'TEXT'), ('tiger_max_seq', 'INTEGER')):
+        if col not in have:
+            c.execute(f"ALTER TABLE scan_watch_state ADD COLUMN {col} {kind}")
     c.execute("INSERT OR IGNORE INTO scan_watch_state (id) VALUES (1)")
     c.execute("""CREATE TABLE IF NOT EXISTS watch_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, seq INTEGER, detail TEXT,
@@ -462,7 +464,7 @@ def get_delivery_records(scan_ids):
 
 # ── Lost scan / Import stall ──────────────────────────────────
 _WATCH_FIELDS = ('it_person_id', 'max_seq', 'last_new_at', 'last_poll_at', 'last_error', 'stalled',
-                 'summary_date', 'alert_fail_at', 'alert_log_at')
+                 'summary_date', 'alert_fail_at', 'alert_log_at', 'tiger_error', 'tiger_max_seq')
 
 
 def get_watch_state():
@@ -516,6 +518,12 @@ def _mark_events(column, ids, value):
         return
     conn = get_sqlite_conn()
     conn.executemany(f"UPDATE watch_events SET {column}=? WHERE id=?", [(value, int(i)) for i in ids])
+    conn.commit(); conn.close()
+
+
+def update_watch_event_detail(event_id, detail):
+    conn = get_sqlite_conn()
+    conn.execute("UPDATE watch_events SET detail=? WHERE id=?", (json.dumps(detail, ensure_ascii=False), int(event_id)))
     conn.commit(); conn.close()
 
 

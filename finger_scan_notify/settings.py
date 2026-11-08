@@ -3,6 +3,8 @@
 - APP_ENV=production   : ต้องมี SECRET_KEY (≥ 32 ตัว) และ HOSOFFICE_HOST/USER/DATABASE ไม่งั้นไม่ยอมเริ่ม
 - HOSOFFICE_*           : มี HOSOFFICE_HOST = ใช้ค่าจาก .env และไม่ใช้รหัสที่ค้างใน SQLite (ล้างทิ้งตอน init_db)
                           ไม่มี = เครื่องพัฒนา ใช้ค่าจากหน้าตั้งค่าฐานข้อมูล (SQLite) แบบเดิม
+- TIGER_*               : ฐานข้อมูลเครื่องสแกน (SQL Server) อ่านอย่างเดียว — มี TIGER_HOST ต้องมี DATABASE/USER/PASSWORD ครบ
+                          ไม่มี = ไม่เชื่อม (ระบุเจ้าของ Lost scan และเทียบเลขสองฝั่งไม่ได้ ที่เหลือทำงานปกติ)
 - MONITOR_AUTOSTART=1   : เครื่องหลัก — เริ่ม Monitor และการเตือนเองตอนเปิดแอป (ADR 0001: เปิดได้เครื่องเดียว)
 
 อ่านค่าผ่าน settings.current เสมอ (อย่า from settings import current) เพื่อให้ test สลับค่าได้
@@ -31,6 +33,7 @@ class Settings:
     monitor_autostart: bool
     listen_host: str
     listen_port: int
+    tiger: dict | None = None
 
     @property
     def is_production(self):
@@ -76,11 +79,23 @@ def load(env):
             if not ok:
                 raise SettingsError(f'ต้องตั้ง {name} ใน .env')
 
+    tiger = None
+    if env.get('TIGER_HOST', '').strip():
+        for name in ('TIGER_DATABASE', 'TIGER_USER', 'TIGER_PASSWORD'):
+            if not env.get(name, '').strip():
+                raise SettingsError(f'ต้องตั้ง {name} ใน .env (มี TIGER_HOST แล้ว)')
+        tiger = {'host': env['TIGER_HOST'].strip(), 'port': _port(env, 'TIGER_PORT', 1433),
+                 'database': env['TIGER_DATABASE'].strip(), 'user': env['TIGER_USER'].strip(),
+                 'password': env['TIGER_PASSWORD'],
+                 'person_column': env.get('TIGER_PERSON_COLUMN', '').strip(),
+                 'machine_column': env.get('TIGER_MACHINE_COLUMN', '').strip()}
+
     return Settings(
         app_env=app_env, secret_key=secret, hosoffice=hosoffice,
         monitor_autostart=env.get('MONITOR_AUTOSTART', '').strip().lower() in TRUE_VALUES,
         listen_host=env.get('LISTEN_HOST', '').strip() or '127.0.0.1',
         listen_port=_port(env, 'LISTEN_PORT', 5050),
+        tiger=tiger,
     )
 
 

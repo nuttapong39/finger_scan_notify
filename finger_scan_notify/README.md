@@ -102,7 +102,9 @@ finger_scan_notify/
 ├── settings.py         # ค่าจาก .env (ความลับ, hosoffice, MONITOR_AUTOSTART)
 ├── auth.py             # ล็อกอิน admin + guard ทุก route
 ├── icons.py            # icon('ชื่อ') ใน template (Lucide / Simple Icons) + initial() ตัวอักษรย่อ
-├── manage.py           # คำสั่งดูแลระบบบน Server
+├── manage.py           # คำสั่งดูแลระบบบน Server (รวม tiger-check)
+├── scanwatch.py        # ตรวจ Lost scan / Import stall + แจ้ง IT
+├── tigersoft.py        # อ่านฐานข้อมูลเครื่องสแกน (SQL Server, SELECT อย่างเดียว)
 ├── .env.example        # ต้นแบบ .env (ไฟล์ .env จริง git ไม่เก็บ)
 ├── routes_phase2.py    # หน้า/API ตรวจสอบและส่งย้อนหลัง + เตือนยังไม่สแกน
 ├── scan_types.py       # กฎเดียวของทิศทาง Scan (เข้า/ออก)

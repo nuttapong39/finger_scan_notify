@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 import database
 import delivery
 import hosoffice
+import tigersoft
 
 POLL_SECONDS = 60
 WINDOW_SEQ = 2000                  # ย้อนดูกี่เลข (~9 วันทำงาน)
@@ -119,7 +120,12 @@ def _gap_lines(events):
     lines = []
     for e in events[:MAX_LISTED]:
         d = e['detail']
-        lines.append(f"เลข {e['seq']} · ระหว่างสแกน {d.get('prev_time', '-')[-8:]}–{d.get('next_time', '-')[-8:]}")
+        if d.get('scan_time'):          # ระบุตัวตนจากเครื่องสแกนได้ (ช่วง C)
+            who = ' · '.join(str(x) for x in (d.get('name'), f"สแกน {d['scan_time'][-8:]}",
+                                              f"เครื่อง {d['machine']}" if d.get('machine') is not None else None) if x)
+            lines.append(f"เลข {e['seq']} · {who}")
+        else:
+            lines.append(f"เลข {e['seq']} · ระหว่างสแกน {d.get('prev_time', '-')[-8:]}–{d.get('next_time', '-')[-8:]}")
     if len(events) > MAX_LISTED:
         lines.append(f'…และอีก {len(events) - MAX_LISTED} รายการ (ดูหน้า Scan ที่อาจตกหล่น)')
     return lines
@@ -172,6 +178,37 @@ def _send_summary(now, ts, open_lost, open_stall):
         database.save_watch_state(summary_date=today)
 
 
+# ── ฐานข้อมูลเครื่องสแกน (ช่วง C) ──────────────────────────────
+def _identify(ts):
+    """เติมชื่อ/เวลา/เครื่องให้ Lost scan ที่เปิดอยู่จากเครื่องสแกน — เลขที่เครื่องไม่เคยออกให้ = รูในการนับ ไม่ใช่สแกนที่หาย → ปิดเงียบ ๆ"""
+    events = [e for e in database.get_watch_events('lost_scan', open_only=True) if not e['detail'].get('looked_up')][:100]
+    if not events:
+        return
+    found = tigersoft.get_rows([e['seq'] for e in events])
+    people = {r['person'] for r in found.values() if r['person'] is not None}
+    try:
+        names = hosoffice.get_names_by_fingle_ids(people) if people else {}
+    except hosoffice.HosofficeUnavailable:
+        names = {}
+    for e in events:
+        d = dict(e['detail'], looked_up=True)
+        src = found.get(e['seq'])
+        if src is None:
+            d['not_in_source'] = True
+            database.update_watch_event_detail(e['id'], d)
+            database.close_watch_events([e['id']], ts)
+            database.mark_watch_recovery_notified([e['id']])
+            continue
+        if src['time'] is not None:
+            d['scan_time'] = src['time'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(src['time'], 'strftime') else str(src['time'])
+        if src['machine'] is not None:
+            d['machine'] = src['machine']
+        name = names.get(src['person'], names.get(str(src['person']))) if src['person'] is not None else None
+        if name:
+            d['name'] = name
+        database.update_watch_event_detail(e['id'], d)
+
+
 # ── หนึ่งรอบ ──────────────────────────────────────────────────
 def run_cycle(now=None):
     now = now or datetime.now()
@@ -205,9 +242,21 @@ def run_cycle(now=None):
     database.close_watch_events(expired, ts)
     database.mark_watch_recovery_notified(expired)
 
+    src_max, tiger_error = None, None
+    if tigersoft.configured():
+        try:
+            src_max = tigersoft.get_latest_seq()
+            _identify(ts)
+        except tigersoft.TigerUnavailable as e:
+            tiger_error = str(e)[:300]
+
     cfgs = database.get_reminder_config()
-    stalled = ((not new_data or first_poll) and in_watch_window(cfgs, now) and ts - last_new_at >= STALL_AFTER_S
-               and expected_scans(rows, datetime.fromtimestamp(last_new_at), now) >= MIN_EXPECTED)
+    if src_max is not None:
+        # เทียบเลขล่าสุดสองฝั่ง: เครื่องมีเลขใหม่กว่าที่ hosoffice แต่ hosoffice ไม่ขยับ ≥ 20 นาที — ตรวจได้ตลอดวัน ไม่ต้องเดาจากอัตราปกติ
+        stalled = bool(max_seq is not None and src_max > max_seq and ts - last_new_at >= STALL_AFTER_S)
+    else:
+        stalled = ((not new_data or first_poll) and in_watch_window(cfgs, now) and ts - last_new_at >= STALL_AFTER_S
+                   and expected_scans(rows, datetime.fromtimestamp(last_new_at), now) >= MIN_EXPECTED)
     open_stall = database.get_watch_events('stall', open_only=True)
     if stalled and not open_stall:
         database.open_watch_event('stall', None, {'last_new': datetime.fromtimestamp(last_new_at).strftime('%H:%M')}, ts)
@@ -215,7 +264,7 @@ def run_cycle(now=None):
         database.close_watch_events([e['id'] for e in open_stall], ts)
 
     database.save_watch_state(max_seq=max_seq, last_new_at=last_new_at, last_poll_at=ts, last_error=None,
-                              stalled=int(stalled))
+                              stalled=int(stalled), tiger_error=tiger_error, tiger_max_seq=src_max)
     _send_alerts(now, ts)
     return {'status': 'ok', 'stalled': stalled, 'gaps': len(database.get_watch_events('lost_scan', open_only=True))}
 

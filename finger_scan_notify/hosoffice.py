@@ -146,6 +146,16 @@ def get_duplicate_device_sequences(days=60):
                   f"ORDER BY f.MACHIN_SCAN_ID, f.SCAN_DATE_TIME LIMIT 3000", (int(days),))
 
 
+def get_names_by_fingle_ids(fingle_ids):
+    """{str(FINGLE_ID): 'ชื่อ นามสกุล'} จาก hr_person — ใช้ระบุเจ้าของ Lost scan (ไม่มี/หาไม่เจอ = ไม่อยู่ในผล)"""
+    ids = sorted({str(i).strip() for i in fingle_ids if str(i).strip()})
+    if not ids:
+        return {}
+    rows = _query(f"SELECT FINGLE_ID, CONCAT(HR_FNAME, ' ', HR_LNAME) AS name FROM hr_person "
+                  f"WHERE FINGLE_ID IN ({_in(ids)})", tuple(ids))
+    return {str(r['FINGLE_ID']).strip(): (r['name'] or '').strip() for r in rows}
+
+
 def get_max_scan_id():
     """MAX(ID) หรือ None ถ้าต่อ DB ไม่ได้ (None ≠ 0: ห้ามใช้ 0 เป็นจุดเริ่มต้น)"""
     try:

@@ -18,6 +18,7 @@
 <div class="w-grid" id="w-state">
   <div class="stat-card"><div class="w-kv">สถานะการนำเข้า<b id="s-import">-</b></div></div>
   <div class="stat-card"><div class="w-kv">เลขล่าสุดที่ hosoffice<b id="s-seq">-</b></div></div>
+  <div class="stat-card"><div class="w-kv">เลขล่าสุดที่เครื่องสแกน<b id="s-src" style="font-size:14px;">-</b></div></div>
   <div class="stat-card"><div class="w-kv">เห็นเลขใหม่ล่าสุด<b id="s-new" style="font-size:14px;">-</b></div></div>
   <div class="stat-card"><div class="w-kv">ตรวจล่าสุด<b id="s-poll" style="font-size:14px;">-</b></div></div>
 </div>
@@ -72,6 +73,8 @@
     $('s-import').style.color = s.stalled ? 'var(--accent-red)' : 'var(--text-primary)';
     $('s-seq').textContent = s.max_seq == null ? '-' : s.max_seq;
     $('s-new').textContent = s.last_new_at || '-';
+    $('s-src').textContent = !s.tiger_configured ? 'ยังไม่ได้เชื่อม (TIGER_* ใน .env)' : (s.tiger_error ? 'ต่อไม่ได้' : (s.tiger_max_seq == null ? '-' : s.tiger_max_seq));
+    $('s-src').title = s.tiger_error || '';
     $('s-poll').textContent = s.last_poll_at || '-';
     $('h-lost').textContent = s.lost_after_min;
     const err = $('s-error');
@@ -86,8 +89,10 @@
     }
     events.forEach(e => {
       const tr = el('tr');
+      const who = [e.detail.name, e.detail.scan_time ? 'สแกน ' + e.detail.scan_time : null,
+                   e.detail.machine != null ? 'เครื่อง ' + e.detail.machine : null].filter(Boolean);
       const detail = e.kind === 'lost_scan'
-        ? `เลข ${e.seq} · ระหว่างสแกน ${(e.detail.prev_time || '-').slice(-8)} – ${(e.detail.next_time || '-').slice(-8)}`
+        ? `เลข ${e.seq} · ` + (who.length ? who.join(' · ') : `ระหว่างสแกน ${(e.detail.prev_time || '-').slice(-8)} – ${(e.detail.next_time || '-').slice(-8)}`)
         : `ไม่มีสแกนใหม่ตั้งแต่ ${e.detail.last_new || '-'}`;
       tr.append(el('td', KIND[e.kind] || e.kind), el('td', detail, null), el('td', e.first_seen));
       const st = el('td');

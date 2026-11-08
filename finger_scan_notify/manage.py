@@ -8,6 +8,7 @@
                         สำรอง SQLite ด้วย VACUUM INTO (ทำได้ขณะระบบทำงาน) สิทธิ์ 600 เก็บ N ไฟล์ล่าสุด
   can-restart           exit 0 ถ้า restart ได้ / 1 ถ้ามี job ส่งย้อนหลังกำลังรัน (deploy.sh ใช้)
   reset-checkpoint      หลังกู้ไฟล์สำรอง: Monitor เริ่มนับจาก scan ล่าสุด ไม่ส่ง scan เก่าซ้ำ (หยุดบริการก่อน)
+  tiger-check           ตรวจการเชื่อมต่อฐานข้อมูลเครื่องสแกน (SELECT อย่างเดียว) แสดงชื่อคอลัมน์ และเทียบเลขกับ hosoffice
   check                 ตรวจ .env, hosoffice (READ ONLY + อ่านได้ครบ 4 ตาราง — SELECT อย่างเดียว),
                         ต่อ MOPH Alert ได้ (เปิด TCP เท่านั้น ไม่ส่งข้อความ), มีบัญชี admin
 """
@@ -21,6 +22,7 @@ import auth
 import database
 import hosoffice
 import settings
+import tigersoft
 
 DEFAULT_BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'backups')
 EXTRA_TABLES = ('leave_holiday', 'leave_register', 'fingle_scan_notify_mute')
@@ -189,7 +191,54 @@ def cmd_check(args):
     return bad
 
 
-COMMANDS = {'init-admin': cmd_init_admin, 'reset-admin': cmd_reset_admin, 'backup': cmd_backup,
+def cmd_tiger_check(args):
+    t = settings.current.tiger
+    if not t:
+        print('✗ ยังไม่ได้ตั้งค่าฐานข้อมูลเครื่องสแกน — ใส่ TIGER_HOST, TIGER_DATABASE, TIGER_USER, TIGER_PASSWORD ใน .env')
+        return 1
+    print(f"เครื่อง {t['host']}:{t['port']} · ฐานข้อมูล {t['database']} · บัญชี {t['user']}")
+    try:
+        cols = tigersoft.get_columns()
+        latest = tigersoft.get_latest_seq()
+    except tigersoft.TigerUnavailable as e:
+        print(f'  FAIL ต่อ/อ่านไม่ได้: {e}')
+        return 1
+    names = [c for c, _ in cols]
+    print(f'  ok   ตาราง {tigersoft.TABLE}: {len(cols)} คอลัมน์')
+    print('       ' + ', '.join(f'{c} ({k})' for c, k in cols))
+    bad = 0
+    for needed in (tigersoft.SEQ_COL, tigersoft.TIME_COL):
+        if needed not in names:
+            print(f'  FAIL ไม่พบคอลัมน์ {needed}')
+            bad = 1
+    print(f'  ok   เลขล่าสุดที่เครื่อง ({tigersoft.SEQ_COL}): {latest}')
+    for key, env in (('person_column', 'TIGER_PERSON_COLUMN'), ('machine_column', 'TIGER_MACHINE_COLUMN')):
+        v = t[key]
+        if not v:
+            print(f'  --   {env} ยังไม่ตั้ง (ไม่จำเป็น แต่ถ้าตั้ง จะระบุ{"ชื่อ" if key == "person_column" else "เครื่อง"}ของ Lost scan ได้)')
+        elif v not in names:
+            print(f'  FAIL {env}={v} ไม่มีในตาราง')
+            bad = 1
+        else:
+            print(f'  ok   {env}={v}')
+    try:
+        window = hosoffice.get_device_window(200)
+    except hosoffice.HosofficeUnavailable as e:
+        print(f'  WARN เทียบกับ hosoffice ไม่ได้: {e}')
+        return bad
+    seqs = [r['seq'] for r in window]
+    try:
+        src = tigersoft.get_rows(seqs)
+    except tigersoft.TigerUnavailable as e:
+        print(f'  FAIL อ่านแถวเพื่อเทียบไม่ได้: {e}')
+        return 1
+    same_time = sum(1 for r in window if r['seq'] in src and src[r['seq']]['time'] == r['time'])
+    print(f"  {'ok  ' if len(src) == len(seqs) else 'WARN'} เลขของ hosoffice ล่าสุด {len(seqs)} แถว: พบที่เครื่อง {len(src)}/{len(seqs)} · เวลาตรงกัน {same_time}/{len(seqs)}")
+    print('\n✓ พร้อมใช้' if not bad else '\n✗ มีข้อที่ต้องแก้')
+    return bad
+
+
+COMMANDS = {'tiger-check': cmd_tiger_check, 'init-admin': cmd_init_admin, 'reset-admin': cmd_reset_admin, 'backup': cmd_backup,
             'can-restart': cmd_can_restart, 'reset-checkpoint': cmd_reset_checkpoint, 'check': cmd_check}
 
 

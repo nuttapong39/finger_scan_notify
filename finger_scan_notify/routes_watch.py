@@ -6,6 +6,7 @@ from flask import Blueprint, jsonify, render_template, request
 import database
 import hosoffice
 import scanwatch
+import tigersoft
 
 bp = Blueprint('watch', __name__)
 
@@ -24,6 +25,8 @@ def _state():
     st = database.get_watch_state()
     return {'it_person_id': st['it_person_id'], 'max_seq': st['max_seq'], 'last_new_at': _when(st['last_new_at']),
             'last_poll_at': _when(st['last_poll_at']), 'last_error': st['last_error'], 'stalled': bool(st['stalled']),
+            'tiger_configured': tigersoft.configured(), 'tiger_error': st['tiger_error'],
+            'tiger_max_seq': st['tiger_max_seq'],
             'lost_after_min': scanwatch.LOST_AFTER_S // 60, 'stall_after_min': scanwatch.STALL_AFTER_S // 60}
 
 
