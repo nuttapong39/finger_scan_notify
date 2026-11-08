@@ -2,7 +2,8 @@
    เอฟเฟกต์ทั้งหมดอยู่ที่หน้านี้เท่านั้น ; ปิดได้ด้วยปุ่ม FX (คลาส fx-off บน <html>) และปิดเองเมื่อระบบตั้งลดการเคลื่อนไหว
    สีหลักอ้าง token ของ app.css ([data-appearance="cyber"]) ; ค่าที่ใช้เฉพาะหน้านี้ประกาศไว้ใน .login-body */
 .login-body {
-  --neon: var(--accent-cyan); --cyan: var(--accent-blue); --red: var(--accent-red); --amber: var(--accent-amber);
+  --neon: #00ff9c; --cyan: #00e5ff; --red: #ff5c7c; --amber: #ffc94a;
+  --bg-base: #030b08; --text-primary: #d7fff0; --text-muted: #70aa92; --accent-red: #ff5c7c;
   --line: rgba(0, 255, 156, .25); --neon-a: rgba(0, 255, 156, .35);
     position: relative; min-height: 100vh; overflow-x: hidden; background: var(--bg-base); color: var(--text-primary);
 }

@@ -292,3 +292,12 @@ def test_a_locked_out_visitor_sees_the_thai_wait_message_inside_the_cyber_page(a
     r = anon_client.post('/login', data={'username': 'admin', 'password': 'x'})
     html = r.get_data(as_text=True)
     assert r.status_code == 429 and 'ลองใหม่ในอีก' in html and 'data-appearance="cyber"' in html
+
+
+def test_inner_pages_have_a_static_terminal_background_in_cyber_only(admin_client):
+    css = admin_client.get('/static/app.css').get_data(as_text=True)
+    rule = re.search(r'\[data-appearance="cyber"\] body:not\(\.login-body\)::before\s*\{(.*?)\}', css, re.S)
+    assert rule, 'ไม่มีพื้นหลัง terminal ของหน้าภายใน'
+    assert 'animation' not in rule.group(1)               # นิ่ง: ตารางภาษาไทยต้องอ่านง่าย
+    assert 'pointer-events: none' in rule.group(1)
+    assert re.search(r'--bg-base:\s*#0d0f12', css)          # พื้นดำเหมือนโหมดมืดเดิม

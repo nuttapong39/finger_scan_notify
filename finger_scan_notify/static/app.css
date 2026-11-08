@@ -72,31 +72,42 @@
 }
 
 [data-appearance="cyber"] {
-  --bg-base:       #030b08;
-  --bg-surface:    #061510;
-  --bg-card:       #071a13;
-  --bg-card-hover: #0b2419;
-  --bg-input:      #030b08;
-  --border:        #12382a;
-  --border-light:  #1d5640;
-  --accent-blue:   #00e5ff;
-  --accent-cyan:   #00ff9c;
-  --accent-green:  #3dff9a;
-  --accent-red:    #ff5c7c;
-  --accent-amber:  #ffc94a;
-  --accent-purple: #b388ff;
-  --text-primary:  #d7fff0;
-  --text-secondary:#9bd4bd;
-  --text-muted:    #70aa92;
-  --tint-blue:     rgba(0, 229, 255, .12);
-  --tint-green:    rgba(61, 255, 154, .12);
-  --tint-red:      rgba(255, 92, 124, .13);
-  --tint-amber:    rgba(255, 201, 74, .12);
-  --tint-purple:   rgba(179, 136, 255, .13);
-  --tint-muted:    rgba(112, 170, 146, .16);
-  --overlay:       rgba(0, 0, 0, .75);
-  --btn-primary:   #0b7a55;
+  /* หน้าภายในระบบ: พื้นดำเหมือนโหมดมืดเดิม (หน้า login ใช้สี neon ของตัวเองใน login.css) */
+  --bg-base:       #0d0f12;
+  --bg-surface:    #14171b;
+  --bg-card:       #14171b;
+  --bg-card-hover: #1b1f24;
+  --bg-input:      #0d0f12;
+  --border:        #252a31;
+  --border-light:  #343a44;
+  --accent-blue:   #60a5fa;
+  --accent-cyan:   #2dd4bf;
+  --accent-green:  #4ade80;
+  --accent-red:    #f87171;
+  --accent-amber:  #fbbf24;
+  --accent-purple: #a78bfa;
+  --text-primary:  #e7e9ec;
+  --text-secondary:#a4abb5;
+  --text-muted:    #7c848f;
+  --tint-blue:     rgba(96, 165, 250, .12);
+  --tint-green:    rgba(74, 222, 128, .12);
+  --tint-red:      rgba(248, 113, 113, .12);
+  --tint-amber:    rgba(251, 191, 36, .12);
+  --tint-purple:   rgba(167, 139, 250, .12);
+  --tint-muted:    rgba(124, 132, 143, .16);
+  --overlay:       rgba(0, 0, 0, .65);
 }
+
+/* พื้นหลังสไตล์ terminal ของหน้าภายใน: เส้นสแกนจาง + กริดเขียวจาง + แสงขอบ — นิ่งทั้งหมด ไม่มีภาพเคลื่อนไหว (ตารางต้องอ่านง่าย) */
+[data-appearance="cyber"] body:not(.login-body)::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    repeating-linear-gradient(to bottom, rgba(255, 255, 255, .04) 0 1px, transparent 1px 3px),
+    linear-gradient(rgba(0, 255, 156, .08) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(90deg, rgba(0, 255, 156, .08) 1px, transparent 1px) 0 0 / 48px 48px,
+    radial-gradient(ellipse at 70% 0%, rgba(0, 255, 156, .12), transparent 60%);
+}
+[data-appearance="cyber"] .layout { position: relative; z-index: 1; }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { color-scheme: light; }
