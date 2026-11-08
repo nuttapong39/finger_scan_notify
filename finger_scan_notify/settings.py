@@ -11,7 +11,7 @@
 """
 import os
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from dotenv import dotenv_values
 
@@ -33,7 +33,7 @@ class Settings:
     monitor_autostart: bool
     listen_host: str
     listen_port: int
-    tiger: dict | None = None
+    tiger: dict | None = field(default=None, repr=False)      # มีรหัสผ่าน — ห้ามโผล่ใน repr/log
 
     @property
     def is_production(self):

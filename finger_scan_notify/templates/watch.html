@@ -97,6 +97,7 @@
       tr.append(el('td', KIND[e.kind] || e.kind), el('td', detail, null), el('td', e.first_seen));
       const st = el('td');
       st.appendChild(e.open ? badge('ยังค้าง', 'badge-error', () => icon('circle-x'))
+                            : e.detail.not_in_source ? badge('ไม่มีที่เครื่อง (รูในการนับ) ' + (e.closed_at || ''), 'badge-muted', () => icon('circle-check'))
                             : badge('เติมแล้ว ' + (e.closed_at || ''), 'badge-success', () => icon('circle-check')));
       const al = el('td'); al.appendChild(e.alerted ? badge('แจ้งแล้ว', 'badge-muted', () => icon('bell')) : badge('ยังไม่แจ้ง', 'badge-muted'));
       tr.append(st, al); tb.appendChild(tr);

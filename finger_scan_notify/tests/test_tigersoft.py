@@ -193,7 +193,7 @@ def watch(tmp_db, tiger, monkeypatch):
 
 def test_a_lost_scan_is_identified_with_name_time_and_machine(watch, tiger):
     watch['rows'] = [row(1, at(8, 0)), row(3, at(8, 2))]
-    tiger['rows'] = {2: src_row(2, at(8, 1, 20), person=7, machine=2)}
+    tiger['rows'] = {1: src_row(1, at(8, 0)), 2: src_row(2, at(8, 1, 20), person=7, machine=2), 3: src_row(3, at(8, 2))}
     tiger['max'] = 3
     scanwatch.run_cycle(at(8, 5))
     d = database.get_watch_events('lost_scan')[0]['detail']
@@ -204,12 +204,14 @@ def test_a_lost_scan_is_identified_with_name_time_and_machine(watch, tiger):
 
 def test_a_missing_number_the_scanner_never_issued_is_not_a_lost_scan(watch, tiger):
     watch['rows'] = [row(1, at(8, 0)), row(3, at(8, 2))]
-    tiger['rows'] = {}                                            # เครื่องไม่มีเลข 2 → เป็นรูในการนับ ไม่ใช่การสแกนที่หาย
+    tiger['rows'] = {1: src_row(1, at(8, 0)), 3: src_row(3, at(8, 2))}      # เครื่องไม่มีเลข 2 → เป็นรูในการนับ ไม่ใช่การสแกนที่หาย
     tiger['max'] = 3
     scanwatch.run_cycle(at(8, 5))
+    assert [e['open'] for e in database.get_watch_events('lost_scan')] == [True]           # ยังเร็วไป: แถวอาจ commit ช้า
     scanwatch.run_cycle(at(8, 21))
     assert watch['sent'] == []
-    assert [e['open'] for e in database.get_watch_events('lost_scan')] == [False]
+    events = database.get_watch_events('lost_scan')
+    assert [e['open'] for e in events] == [False] and events[0]['detail']['not_in_source'] is True
 
 
 def test_when_the_scanner_database_is_unreachable_lost_scans_still_alert_without_names(watch, tiger):
@@ -224,7 +226,7 @@ def test_when_the_scanner_database_is_unreachable_lost_scans_still_alert_without
 def test_without_a_person_column_the_name_is_simply_left_out(watch, tiger, monkeypatch):
     monkeypatch.setattr(settings, 'current', settings.load({**PROD, **TIGER_ENV}))
     watch['rows'] = [row(1, at(8, 0)), row(3, at(8, 2))]
-    tiger['rows'] = {2: src_row(2, at(8, 1, 20))}
+    tiger['rows'] = {1: src_row(1, at(8, 0)), 2: src_row(2, at(8, 1, 20)), 3: src_row(3, at(8, 2))}
     tiger['max'] = 3
     scanwatch.run_cycle(at(8, 5))
     d = database.get_watch_events('lost_scan')[0]['detail']
@@ -238,14 +240,15 @@ def test_stall_is_decided_all_day_by_comparing_the_latest_number_on_both_sides(w
     scanwatch.run_cycle(at(13, 1))
     assert scanwatch.import_stalled(at(13, 1)) is False
     tiger['max'] = 103                                            # เครื่องมีสแกนใหม่ 3 รายการ แต่ hosoffice ไม่ได้รับ
-    scanwatch.run_cycle(at(13, 10))
-    assert scanwatch.import_stalled(at(13, 10)) is False          # ยังไม่ครบ 20 นาที
+    scanwatch.run_cycle(at(13, 10))                               # เริ่มเห็น "ตามหลัง" ตอน 13:10
     scanwatch.run_cycle(at(13, 22))
-    assert scanwatch.import_stalled(at(13, 22)) is True           # นอกช่วงเฝ้าก็ตรวจได้ (ไม่มีข้อมูลเงียบปกติมาปน)
+    assert scanwatch.import_stalled(at(13, 22)) is False          # ยังไม่ครบ 20 นาทีจากครั้งแรกที่เห็น
+    scanwatch.run_cycle(at(13, 31))
+    assert scanwatch.import_stalled(at(13, 31)) is True           # นอกช่วงเฝ้าก็ตรวจได้ (ไม่มีข้อมูลเงียบปกติมาปน)
     assert len(watch['sent']) == 1 and 'การนำเข้า' in watch['sent'][0]
-    watch['rows'].append(row(103, at(13, 23)))
-    scanwatch.run_cycle(at(13, 24))
-    assert scanwatch.import_stalled(at(13, 24)) is False
+    watch['rows'].append(row(103, at(13, 33)))
+    scanwatch.run_cycle(at(13, 34))
+    assert scanwatch.import_stalled(at(13, 34)) is False
     assert len(watch['sent']) == 2 and 'กลับมาปกติ' in watch['sent'][1]
 
 
@@ -317,3 +320,109 @@ def test_the_page_script_shows_the_name_and_scan_time_columns(admin_client):
     html = admin_client.get('/watch').get_data(as_text=True)
     assert 'e.detail.name' in html and 'scan_time' in html
     assert json.dumps('p@ss-secret') not in html
+
+
+def test_the_first_scan_after_a_long_quiet_period_is_not_mistaken_for_a_stall(watch, tiger):
+    watch['rows'] = [row(100, at(7, 0))]
+    tiger['max'] = 100
+    scanwatch.run_cycle(at(7, 1))
+    tiger['max'] = 101                                            # 09:00 มีสแกนแรกของวัน เครื่องเห็นก่อน hosoffice ไม่กี่วินาที
+    scanwatch.run_cycle(at(9, 0, 5))
+    assert scanwatch.import_stalled(at(9, 0, 5)) is False and watch['sent'] == []
+
+
+def test_a_wrong_scanner_database_never_wipes_open_lost_scans(watch, tiger):
+    watch['rows'] = [row(1, at(8, 0)), row(3, at(8, 2))]
+    tiger['rows'] = {}                                            # ฐานข้อมูล/ตารางผิดที่: ว่างเปล่าโดยไม่ error
+    tiger['max'] = 3
+    scanwatch.run_cycle(at(8, 5))
+    assert [e['open'] for e in database.get_watch_events('lost_scan')] == [True]
+    assert 'ไม่พบที่เครื่องสแกนเลย' in database.get_watch_state()['tiger_error']
+    scanwatch.run_cycle(at(8, 21))
+    assert len(watch['sent']) == 1                                # ยังแจ้งตามปกติ ไม่ถูกปิดเงียบ ๆ
+
+
+def test_a_failed_name_lookup_is_retried_next_round(watch, tiger, monkeypatch):
+    watch['rows'] = [row(1, at(8, 0)), row(3, at(8, 2))]
+    tiger['rows'] = {1: src_row(1, at(8, 0)), 2: src_row(2, at(8, 1, 20)), 3: src_row(3, at(8, 2))}
+    tiger['max'] = 3
+
+    def down(ids):
+        raise hosoffice.HosofficeUnavailable('down')
+
+    monkeypatch.setattr(hosoffice, 'get_names_by_fingle_ids', down)
+    scanwatch.run_cycle(at(8, 5))
+    assert 'name' not in database.get_watch_events('lost_scan')[0]['detail']
+    monkeypatch.setattr(hosoffice, 'get_names_by_fingle_ids', lambda ids: {7: 'สมชาย ใจดี'})
+    scanwatch.run_cycle(at(8, 6))
+    assert database.get_watch_events('lost_scan')[0]['detail']['name'] == 'สมชาย ใจดี'
+
+
+def test_a_broken_scanner_response_cannot_stop_the_main_check(watch, tiger):
+    watch['rows'] = [row(1, at(8, 0)), row(3, at(8, 2))]
+    tiger['rows'] = {2: {'unexpected': 1}}
+    tiger['max'] = 3
+    scanwatch.run_cycle(at(8, 5))
+    assert database.get_watch_state()['last_poll_at'] and len(database.get_watch_events('lost_scan')) == 1
+
+
+@pytest.mark.parametrize('sql', [
+    'DELETE FROM ZFP_TimeInOut', 'SELECT 1 EXEC xp_cmdshell', 'SELECT 1 DELETE FROM x', 'SELECT * INTO t FROM x',
+    'SELECT 1 -- hi', 'SELECT 1 /* x */', 'select 1; select 2', 'UPDATE x SET a=1', 'INSERT INTO x VALUES (1)',
+    "SELECT 1 FROM x WHERE a = 1 DROP TABLE x", 'WITH c AS (SELECT 1) DELETE FROM c'])
+def test_the_select_guard_rejects_anything_that_could_write_or_chain(sql):
+    with pytest.raises(ValueError):
+        tigersoft._check_select(sql)
+
+
+def test_the_password_is_not_in_the_settings_repr():
+    assert 'p@ss-secret' not in repr(settings.load({**TIGER_ENV}))
+
+
+def test_a_scanner_row_that_commits_late_is_still_identified_not_dismissed(watch, tiger):
+    watch['rows'] = [row(1, at(8, 0)), row(3, at(8, 2))]
+    tiger['rows'] = {1: src_row(1, at(8, 0)), 3: src_row(3, at(8, 2))}                   # เลข 2 ยังไม่ commit ที่เครื่อง
+    tiger['max'] = 3
+    scanwatch.run_cycle(at(8, 5))
+    scanwatch.run_cycle(at(8, 9))
+    tiger['rows'][2] = src_row(2, at(8, 1, 20), person=7)                                # commit ทีหลัง
+    scanwatch.run_cycle(at(8, 12))
+    d = database.get_watch_events('lost_scan')[0]
+    assert d['open'] and d['detail']['name'] == 'สมชาย ใจดี'
+    scanwatch.run_cycle(at(8, 21))
+    assert len(watch['sent']) == 1 and 'สมชาย ใจดี' in watch['sent'][0]
+
+
+def test_a_lost_latest_scan_with_no_later_scan_is_reported_as_a_stall_with_both_numbers(watch, tiger):
+    watch['rows'] = [row(100, at(16, 0))]
+    tiger['max'] = 101                                                                   # เลข 101 หาย และไม่มีสแกนถัดไปแล้ว
+    scanwatch.run_cycle(at(16, 5))                                                       # ครั้งแรก: ตั้งฐานเลข
+    scanwatch.run_cycle(at(16, 6))                                                       # เริ่มเห็น "ตามหลัง"
+    scanwatch.run_cycle(at(16, 30))
+    assert scanwatch.import_stalled(at(16, 30)) is True
+    assert len(watch['sent']) == 1 and '101' in watch['sent'][0] and '100' in watch['sent'][0]
+    watch['rows'].append(row(102, at(7, 5, day=FRI + timedelta(days=1))))               # เช้าวันถัดไปมีสแกนใหม่ → จบเอง
+    tiger['max'] = 102
+    scanwatch.run_cycle(at(7, 6, day=FRI + timedelta(days=1)))
+    assert scanwatch.import_stalled(at(7, 6, day=FRI + timedelta(days=1))) is False
+
+
+def test_tiger_check_fails_when_no_hosoffice_number_matches_the_scanner_table(tmp_db, tiger, monkeypatch, capsys):
+    tiger['max'] = 500
+    tiger['rows'] = {}
+    monkeypatch.setattr(hosoffice, 'get_device_window', lambda n: [row(365898, at(8, 0)), row(365899, at(8, 1))])
+    assert manage.main(['tiger-check']) == 1
+    out = capsys.readouterr().out
+    assert '0/2' in out and 'FAIL' in out
+
+
+def test_only_the_needed_columns_are_selected_not_the_whole_table(tiger):
+    tigersoft.get_rows([1])
+    sql = tiger['conn'].executed[0][0]
+    assert '*' not in sql and 'FingerID' in sql and 'MachineNo' in sql and 'ID_TimeInout' in sql
+
+
+def test_a_configured_column_name_with_odd_characters_is_refused(tiger, monkeypatch):
+    monkeypatch.setattr(settings, 'current', settings.load({**TIGER_ENV, 'TIGER_PERSON_COLUMN': 'a; DROP TABLE x'}))
+    with pytest.raises(tigersoft.TigerUnavailable):
+        tigersoft.get_rows([1])

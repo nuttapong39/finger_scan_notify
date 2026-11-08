@@ -14,7 +14,11 @@ TABLE = 'ZFP_TimeInOut'
 SEQ_COL = 'ID_TimeInout'          # = fingle_scan.MACHIN_SCAN_ID (Device sequence) — ยืนยันด้วย manage.py tiger-check
 TIME_COL = 'TimeInout'
 CHUNK = 500
+_IDENT = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 _SELECT_ONLY = re.compile(r'^\s*SELECT\b', re.I)
+# T-SQL ไม่ต้องมี ; คั่นคำสั่ง จึงห้ามคำสั่งเขียน/รันและคอมเมนต์ทั้งหมด (ด่านที่สองรองจากสิทธิ์ db_datareader ของบัญชี)
+_FORBIDDEN = re.compile(r'\b(INTO|EXEC|EXECUTE|INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|MERGE|GRANT|REVOKE|'
+                        r'BULK|OPENROWSET|OPENQUERY|OPENDATASOURCE|SHUTDOWN|BACKUP|RESTORE)\b|--|/\*', re.I)
 
 
 class TigerUnavailable(RuntimeError):
@@ -32,7 +36,7 @@ def _connect():
         raise TigerUnavailable('ยังไม่ได้ติดตั้ง pymssql (pip install -r requirements.txt)') from None
     t = settings.current.tiger
     return pymssql.connect(server=t['host'], port=str(t['port']), user=t['user'], password=t['password'],
-                           database=t['database'], login_timeout=10, timeout=30, as_dict=True, charset='UTF-8')
+                           database=t['database'], login_timeout=5, timeout=15, as_dict=True, charset='UTF-8')
 
 
 def _clean(prefix, err):
@@ -64,7 +68,7 @@ def _open():
 
 
 def _check_select(sql):
-    if not _SELECT_ONLY.match(sql) or ';' in sql:
+    if not _SELECT_ONLY.match(sql) or ';' in sql or _FORBIDDEN.search(sql):
         raise ValueError('ฐานข้อมูลเครื่องสแกนอนุญาตเฉพาะ SELECT คำสั่งเดียว')
 
 
@@ -102,7 +106,11 @@ def get_columns():
 def _normalise(raw):
     t = settings.current.tiger
     person_col, machine_col = t['person_column'], t['machine_column']
-    return {'seq': int(raw[SEQ_COL]), 'time': raw.get(TIME_COL),
+    try:
+        seq = int(raw[SEQ_COL])
+    except (KeyError, TypeError, ValueError):
+        raise TigerUnavailable(f'ผลที่ได้ไม่มีคอลัมน์ {SEQ_COL} (ตรวจชื่อตารางด้วย manage.py tiger-check)') from None
+    return {'seq': seq, 'time': raw.get(TIME_COL),
             'person': raw.get(person_col) if person_col else None,
             'machine': raw.get(machine_col) if machine_col else None}
 
@@ -113,11 +121,18 @@ def get_rows(seqs):
     out = {}
     if not seqs:
         return out
+    t = settings.current.tiger
+    # เลือกเฉพาะคอลัมน์ที่ใช้ (ตารางของเครื่องสแกนอาจมีรูป/ข้อมูลใบหน้าขนาดใหญ่) — ชื่อคอลัมน์จาก .env ตรวจรูปแบบก่อนต่อเข้า SQL
+    wanted = [SEQ_COL, TIME_COL, t['person_column'], t['machine_column']]
+    for name in wanted:
+        if name and not _IDENT.match(name):
+            raise TigerUnavailable(f'ชื่อคอลัมน์ไม่ถูกต้อง: {name!r}')
+    cols = ', '.join(dict.fromkeys(n for n in wanted if n))
     with _open() as conn:
         for i in range(0, len(seqs), CHUNK):
             part = seqs[i:i + CHUNK]
             marks = ','.join(['%s'] * len(part))
-            for raw in _run(conn, f'SELECT * FROM {TABLE} WHERE {SEQ_COL} IN ({marks})', part):
+            for raw in _run(conn, f'SELECT {cols} FROM {TABLE} WHERE {SEQ_COL} IN ({marks})', part):
                 row = _normalise(raw)
                 out[row['seq']] = row
     return out

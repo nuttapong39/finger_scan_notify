@@ -233,7 +233,11 @@ def cmd_tiger_check(args):
         print(f'  FAIL อ่านแถวเพื่อเทียบไม่ได้: {e}')
         return 1
     same_time = sum(1 for r in window if r['seq'] in src and src[r['seq']]['time'] == r['time'])
-    print(f"  {'ok  ' if len(src) == len(seqs) else 'WARN'} เลขของ hosoffice ล่าสุด {len(seqs)} แถว: พบที่เครื่อง {len(src)}/{len(seqs)} · เวลาตรงกัน {same_time}/{len(seqs)}")
+    verdict = 'FAIL' if seqs and (not src or not same_time) else ('ok  ' if len(src) == len(seqs) else 'WARN')
+    print(f"  {verdict} เลขของ hosoffice ล่าสุด {len(seqs)} แถว: พบที่เครื่อง {len(src)}/{len(seqs)} · เวลาตรงกัน {same_time}/{len(seqs)}")
+    if verdict == 'FAIL':
+        print('       → MACHIN_SCAN_ID ของ hosoffice ไม่ตรงกับ ID_TimeInout ของตารางนี้ (ผิดตาราง/ผิดฐานข้อมูล/คนละระบบเลข) — อย่าเปิดใช้จนกว่าจะแก้')
+        bad = 1
     print('\n✓ พร้อมใช้' if not bad else '\n✗ มีข้อที่ต้องแก้')
     return bad
 

@@ -151,7 +151,7 @@ def get_names_by_fingle_ids(fingle_ids):
     ids = sorted({str(i).strip() for i in fingle_ids if str(i).strip()})
     if not ids:
         return {}
-    rows = _query(f"SELECT FINGLE_ID, CONCAT(HR_FNAME, ' ', HR_LNAME) AS name FROM hr_person "
+    rows = _query(f"SELECT FINGLE_ID, CONCAT_WS(' ', HR_FNAME, HR_LNAME) AS name FROM hr_person "
                   f"WHERE FINGLE_ID IN ({_in(ids)})", tuple(ids))
     return {str(r['FINGLE_ID']).strip(): (r['name'] or '').strip() for r in rows}
 
