@@ -39,3 +39,6 @@ finger_scan_notify/logs/
 .venv/
 venv/
 .pytest_cache/
+
+# โค้ด/โปรแกรมเครื่องมือนำเข้าที่คัดลอกมาตรวจ (มีไฟล์ตั้งค่าที่อาจมีรหัสผ่าน) — ไม่เก็บใน git
+finger_scan_notify/hosoffice-scan-face/
