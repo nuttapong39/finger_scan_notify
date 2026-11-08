@@ -50,6 +50,17 @@ def watch(tmp_db, monkeypatch):
             return st['old']
         return {'count': 0, 'first_id': None, 'last_id': None, 'oldest': None, 'newest': None}
 
+    st['writer'] = None
+
+    def by_writer(last_id, writer):
+        if st['down']:
+            raise hosoffice.HosofficeUnavailable('down')
+        w = st['writer']
+        if w and w['writer'] == writer and last_id < w['last_id']:
+            return {'count': w['count'], 'first_id': w['first_id'], 'last_id': w['last_id']}
+        return {'count': 0, 'first_id': None, 'last_id': None}
+
+    monkeypatch.setattr(hosoffice, 'count_new_rows_by_writer', by_writer)
     monkeypatch.setattr(hosoffice, 'get_max_scan_id', max_id)
     monkeypatch.setattr(hosoffice, 'get_old_device_rows_after', old_after)
     monkeypatch.setattr(hosoffice, 'is_holiday', lambda d: st['holiday'])
@@ -381,3 +392,49 @@ def test_a_restored_table_with_lower_ids_restarts_the_starting_point(watch):
     watch['max_id'] = 500
     scanwatch.run_cycle(at(18, 1))
     assert database.get_watch_state()['old_check_id'] == 500
+
+
+# ── ผู้เขียนที่ปิดแล้ว (SCAN-WATCH) กลับมาเขียนแถว ───────────────────
+def scan_watch_wrote(n, first=1001):
+    return {'writer': 'SCAN-WATCH', 'count': n, 'first_id': first, 'last_id': first + n - 1}
+
+
+def test_a_row_written_by_the_disabled_scan_watch_alerts_it_once(watch):
+    scanwatch.run_cycle(at(18, 0))
+    watch['max_id'], watch['writer'] = 1001, scan_watch_wrote(1)
+    scanwatch.run_cycle(at(18, 1))
+    scanwatch.run_cycle(at(18, 2))
+    assert len(watch['sent']) == 1 and 'SCAN-WATCH' in texts(watch)[0]
+    ev = database.get_watch_events('unexpected_writer')
+    assert len(ev) == 1 and ev[0]['detail']['count'] == 1 and ev[0]['alerted_at']
+
+
+def test_no_rows_from_scan_watch_means_silence_and_history_is_never_flagged(watch):
+    watch['writer'] = scan_watch_wrote(500, first=1)                         # แถวเก่าของ SCAN-WATCH ที่มีมาก่อนเปิดแอป
+    scanwatch.run_cycle(at(18, 0))
+    scanwatch.run_cycle(at(18, 1))
+    assert database.get_watch_events('unexpected_writer') == [] and watch['sent'] == []
+
+
+def test_the_scan_watch_batch_that_keeps_flowing_is_one_event_and_ends_after_ten_quiet_minutes(watch):
+    scanwatch.run_cycle(at(18, 0))
+    watch['max_id'], watch['writer'] = 1300, scan_watch_wrote(300)
+    scanwatch.run_cycle(at(18, 1))
+    watch['max_id'], watch['writer'] = 1320, scan_watch_wrote(20, first=1301)
+    scanwatch.run_cycle(at(18, 2))
+    ev = database.get_watch_events('unexpected_writer')
+    assert len(ev) == 1 and ev[0]['detail']['count'] == 320 and ev[0]['open']
+    watch['writer'] = None
+    scanwatch.run_cycle(at(18, 13))
+    assert not database.get_watch_events('unexpected_writer')[0]['open']
+    assert len(watch['sent']) == 1
+
+
+def test_scan_watch_check_resumes_from_the_same_point_after_hosoffice_was_down(watch):
+    scanwatch.run_cycle(at(18, 0))
+    watch['down'] = True
+    scanwatch.run_cycle(at(18, 1))
+    watch['down'] = False
+    watch['max_id'], watch['writer'] = 1005, scan_watch_wrote(5)
+    scanwatch.run_cycle(at(18, 2))
+    assert database.get_watch_events('unexpected_writer')[0]['detail']['count'] == 5

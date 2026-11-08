@@ -147,6 +147,15 @@ def get_old_device_rows_after(last_id, older_than_hours):
             'oldest': r.get('oldest'), 'newest': r.get('newest')}
 
 
+def count_new_rows_by_writer(last_id, writer):
+    """จำนวน/ช่วง ID ของแถวใหม่ (ID > last_id) ที่ผู้เขียนนี้สร้าง (CREATE_BY = writer) — ใช้จับผู้เขียนที่ปิดไปแล้วแต่กลับมาเขียน
+    ช่วง ID ใช้ดัชนี PK ; ห้ามเปลี่ยนเป็น join/EXISTS ซ้อนกับคอลัมน์ที่ไม่มีดัชนี (MACHIN_SCAN_ID) บนฐานข้อมูลจริง"""
+    rows = _query(f"SELECT COUNT(*) AS n, MIN(ID) AS first_id, MAX(ID) AS last_id FROM `{_tbl()}` "
+                  f"WHERE ID > %s AND CREATE_BY = %s", (int(last_id), str(writer)))
+    r = rows[0] if rows else {}
+    return {'count': int(r.get('n') or 0), 'first_id': r.get('first_id'), 'last_id': r.get('last_id')}
+
+
 def get_duplicate_device_sequences(days=60):
     """แถวที่ใช้ Device sequence + เครื่องเดียวกันมากกว่า 1 แถว (นำเข้าซ้ำ) เรียงตามเลข/เวลา — ให้ HR ยืนยันก่อนลบ"""
     return _query(f"SELECT f.ID, f.MACHIN_SCAN_ID AS seq, f.MACHIN_ID AS machine, f.PERSON_ID, f.HR_FULLNAME, f.SCAN_DATE_TIME "

@@ -63,7 +63,7 @@
 (function () {
   const $ = (id) => document.getElementById(id);
   const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
-  const KIND = { lost_scan: 'Lost scan', stall: 'การนำเข้าหยุด', old_rows: 'สแกนย้อนหลังเป็นชุด' };
+  const KIND = { lost_scan: 'Lost scan', stall: 'การนำเข้าหยุด', old_rows: 'สแกนย้อนหลังเป็นชุด', unexpected_writer: 'ผู้เขียนที่ปิดแล้วกลับมาเขียน' };
 
   function badge(text, cls, makeIcon) {
     const b = el('span', null, 'badge ' + cls); if (makeIcon) b.append(makeIcon(), ' '); b.append(text); return b;
@@ -93,6 +93,8 @@
                    e.detail.machine != null ? 'เครื่อง ' + e.detail.machine : null].filter(Boolean);
       const detail = e.kind === 'lost_scan'
         ? `เลข ${e.seq} · ` + (who.length ? who.join(' · ') : `ระหว่างสแกน ${(e.detail.prev_time || '-').slice(-8)} – ${(e.detail.next_time || '-').slice(-8)}`)
+        : e.kind === 'unexpected_writer'
+          ? `${e.detail.count} แถว (ID ${e.detail.first_id}–${e.detail.last_id}) สร้างโดย ${e.detail.writer}`
         : e.kind === 'old_rows'
           ? `${e.detail.count} แถว (ID ${e.detail.first_id}–${e.detail.last_id}) เป็นสแกนเก่าตั้งแต่ ${e.detail.oldest} ถึง ${e.detail.newest}`
           : `ไม่มีสแกนใหม่ตั้งแต่ ${e.detail.last_new || '-'}`;
@@ -100,7 +102,7 @@
       const st = el('td');
       st.appendChild(e.open ? badge('ยังค้าง', 'badge-error', () => icon('circle-x'))
                             : e.detail.not_in_source ? badge('ไม่มีที่เครื่อง (รูในการนับ) ' + (e.closed_at || ''), 'badge-muted', () => icon('circle-check'))
-                            : badge((e.kind === 'old_rows' ? 'จบแล้ว ' : 'เติมแล้ว ') + (e.closed_at || ''), 'badge-success', () => icon('circle-check')));
+                            : badge((e.kind === 'old_rows' || e.kind === 'unexpected_writer' ? 'จบแล้ว ' : 'เติมแล้ว ') + (e.closed_at || ''), 'badge-success', () => icon('circle-check')));
       const al = el('td'); al.appendChild(e.alerted ? badge('แจ้งแล้ว', 'badge-muted', () => icon('bell')) : badge('ยังไม่แจ้ง', 'badge-muted'));
       tr.append(st, al); tb.appendChild(tr);
     });

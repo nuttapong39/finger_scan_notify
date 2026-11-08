@@ -30,6 +30,7 @@ SUMMARY_UNTIL = '10:30'            # เลยเวลานี้ (เช่�
 MAX_LISTED = 8
 OLD_AFTER_H = 24                   # แถวใหม่ที่เวลาสแกนเก่ากว่านี้ = สแกนย้อนหลัง
 OLD_MIN_ROWS = 10                  # ในหนึ่งรอบตรวจมีแถวย้อนหลังตั้งแต่เท่านี้ = นำเข้าย้อนหลังเป็นชุด (ไม่ใช่สแกนที่มาช้าสองสามแถว)
+CLOSED_WRITER = 'SCAN-WATCH'           # ผู้เขียนแถวของ HOSOffice ERP ที่ปิดถาวรแล้ว (เหตุการณ์ 8 พ.ย. 2569) — ถ้ามีแถวใหม่จากมัน = ถูกเปิดกลับ
 OLD_QUIET_S = 10 * 60              # ไม่มีแถวย้อนหลังเพิ่มนานเท่านี้ = ชุดนำเข้าจบ
 EXPECT_DAYS = 5
 
@@ -164,6 +165,13 @@ def _send_alerts(now, ts):
                    [f"รวม {d['count']} แถว (ID {d['first_id']}–{d['last_id']}) ให้ HR ตัดสินว่าจะเก็บไว้หรือไม่"], now, ts):
             database.mark_watch_recovery_notified([e['id']])
 
+    for e in (x for x in database.get_watch_events('unexpected_writer') if x['open'] and not x['alerted_at']):
+        dd = e['detail']
+        if _notify('problem', f"พบผู้เขียนที่ปิดไปแล้วเขียนแถวอีก ({dd.get('writer', CLOSED_WRITER)})",
+                   [f"แถวใหม่ {dd['count']} แถว (ID {dd['first_id']}–{dd['last_id']}) สร้างโดย {dd.get('writer', CLOSED_WRITER)}",
+                    'ตรวจ sys_scan_watch.ENABLED ของ HOSOffice ERP และปิดทันที — ตัวนี้เขียนแถวซ้ำและส่งการ์ดของเก่า (เหตุการณ์ 8 พ.ย.)'], now, ts):
+            database.mark_watch_alerted([e['id']], ts)
+
     pending_open = [e for e in lost if e['open'] and e['alerted_at']]
     recovered = [e for e in lost if not e['open'] and e['alerted_at'] and not e['recovery_notified']]
     if recovered and not pending_open and _notify(
@@ -212,19 +220,29 @@ def check_old_rows(ts):
     if last is None or last > max_id:                  # รอบแรก / ตารางถูกกู้คืนจนเลขลดลง → เริ่มนับใหม่ที่ปัจจุบัน
         database.save_watch_state(old_check_id=max_id)
         return
-    r = hosoffice.get_old_device_rows_after(last, OLD_AFTER_H)
+    # ถามทั้งสองอย่างก่อนค่อยอัปเดตสถานะ: ถ้า hosoffice ล่มกลางรอบ จุดที่ตรวจยังไม่ขยับ รอบหน้านับใหม่ทั้งหมดไม่ซ้ำ
+    old = hosoffice.get_old_device_rows_after(last, OLD_AFTER_H)
+    writer = hosoffice.count_new_rows_by_writer(last, CLOSED_WRITER)
     database.save_watch_state(old_check_id=max_id)
-    open_ev = database.get_watch_events('old_rows', open_only=True)
-    if open_ev and r['count']:                         # ชุดเดิมยังไหลอยู่: รวมเข้าเหตุการณ์เดิม (แม้รอบนี้น้อยกว่าเกณฑ์)
+    _track_episode('old_rows', old['count'], OLD_MIN_ROWS,
+                   {'oldest': _fmt_day(old['oldest']), 'newest': _fmt_day(old['newest'])}, old, ts)
+    _track_episode('unexpected_writer', writer['count'], 1, {'writer': CLOSED_WRITER}, writer, ts)
+
+
+def _track_episode(kind, count, min_rows, extra, r, ts):
+    """ชุดเหตุการณ์ที่ไหลต่อเนื่อง: เปิดเมื่อรอบเดียวมีถึงเกณฑ์ ; ชุดเดิมที่ยังเปิดอยู่รวมแถวใหม่เข้าเหตุการณ์เดิมเสมอ ; ปิดเมื่อเงียบเกิน 10 นาที"""
+    open_ev = database.get_watch_events(kind, open_only=True)
+    if open_ev and count:
         d = dict(open_ev[0]['detail'], last_id=r['last_id'], last_at=ts)
-        d['count'] = d.get('count', 0) + r['count']
+        d['count'] = d.get('count', 0) + count
         database.update_watch_event_detail(open_ev[0]['id'], d)
-    elif not open_ev and r['count'] >= OLD_MIN_ROWS:
-        database.open_watch_event('old_rows', r['first_id'],
-                                  {'count': r['count'], 'first_id': r['first_id'], 'last_id': r['last_id'],
-                                   'oldest': _fmt_day(r['oldest']), 'newest': _fmt_day(r['newest']), 'last_at': ts}, ts)
+    elif not open_ev and count >= min_rows:
+        database.open_watch_event(kind, r['first_id'], {'count': count, 'first_id': r['first_id'], 'last_id': r['last_id'],
+                                                         'last_at': ts, **extra}, ts)
     elif open_ev and ts - open_ev[0]['detail'].get('last_at', ts) >= OLD_QUIET_S:
         database.close_watch_events([open_ev[0]['id']], ts)
+        if kind == 'unexpected_writer':
+            database.mark_watch_recovery_notified([open_ev[0]['id']])      # แจ้งครั้งเดียวพอ ไม่ต้องส่ง "กลับมาปกติ"
 
 
 # ── ฐานข้อมูลเครื่องสแกน (ช่วง C) ──────────────────────────────
