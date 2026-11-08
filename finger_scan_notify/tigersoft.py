@@ -134,6 +134,18 @@ def same_scan_time(hos_time, src):
     return bool(src.get('device_time') and hos_time == src['device_time'])
 
 
+def get_rows_after(seq, limit=3000):
+    """แถวที่ ID_TimeInout > seq เรียงตามเลข (สูงสุด limit แถว) — ใช้ในโหมดเงา/Scan importer ; รูปแบบเดียวกับ get_rows"""
+    t = settings.current.tiger
+    wanted = [SEQ_COL, TIME_COL, COMMIT_COL, t['person_column'], t['machine_column']]
+    for name in wanted:
+        if name and not _IDENT.match(name):
+            raise TigerUnavailable(f'ชื่อคอลัมน์ไม่ถูกต้อง: {name!r}')
+    cols = ', '.join(dict.fromkeys(n for n in wanted if n))
+    rows = _select(f'SELECT TOP {int(limit)} {cols} FROM {TABLE} WHERE {SEQ_COL} > %s ORDER BY {SEQ_COL}', (int(seq),))
+    return [_normalise(r) for r in rows]
+
+
 def get_rows(seqs):
     """{seq: {'seq','time','person','machine'}} ของเลขที่เครื่องมีอยู่จริง (เลขที่เครื่องไม่เคยออกให้ไม่อยู่ในผล)"""
     seqs = sorted({int(s) for s in seqs})

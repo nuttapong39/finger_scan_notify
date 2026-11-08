@@ -24,6 +24,16 @@
 4. เขียน `insert` ใน transaction เดียว ; บันทึก `held` ลงที่เก็บของ importer ; แล้วค่อยขยับจุดล่าสุดเป็น `next_checkpoint` (ขยับหลังบันทึกสำเร็จเท่านั้น)
 5. `flood` หรือมี `held` ใหม่ หรือ `needs_baseline` → แจ้ง IT (ครั้งเดียวต่อเหตุการณ์) ด้วยกลไกเดียวกับ `scanwatch`
 
+## B1 โหมดเงา: ลงมือแล้ว (8 พ.ย. 2569)
+`python manage.py shadow-report` (อ่านอย่างเดียวทั้งสองฝั่ง ไม่แสดงชื่อ/รหัสบุคคล) ใช้ `plan_batch` ตัวจริงตัดสินว่าจะ เขียน/กัก/ข้าม และรายงานโปรไฟล์การเติมคอลัมน์ของตัวเดิม
+โค้ด: `scan_importer/shadow.py` (`build_report`, `fill_profile`), `tigersoft.get_rows_after`, `hosoffice.get_fill_sample` (ช่วง ID ที่มีดัชนี) · test: `tests/test_shadow_report.py`
+
+**ผลรันครั้งแรกกับของจริง:** ช่วงเลข 363891–365891 เทียบเครื่องสแกน 2,001 แถว → จะเขียน 0 · จะกัก 0 · มีอยู่แล้ว 2,001 · เวลาตรง 2,001/2,001 (ตอนนี้ไม่มีสแกนตกหล่น) ;
+hosoffice มีแถวซ้ำเลขเดียวกัน 240 เลขในช่วงนี้
+**ตัวเดิมเติมคอลัมน์ (จาก 400 แถวล่าสุดของตัวเดิม):** เติมเสมอ 18 คอลัมน์ = `ID, PERSON_ID, SCAN_DATE_TIME, COM_NAME, DAY_TYPE_ID, DAY_TYPE_NAME, SCAN_TYPE, HR_FULLNAME, HR_POSITION_NAME, HR_DEP_NAME, HR_DEP_SUB_NAME, HR_PERSON_TYPE_NAME, APP_TYPE_SAVE, ISCONFIRM, ISINPUT, MACHIN_ID, MACHIN_SCAN_ID, FINGLE_ID` ;
+เติมบางแถว `HR_LEAVEL_NAME` (49%) ; `TYPE_ID`/`DATE_TIME_UPDATE`/`UPDATE_BY` (4%) คือการแก้โดยคนภายหลัง ไม่ใช่งานของตัวนำเข้า ; ที่เหลือไม่เคยเติม (รวม `SCAN_DATE`, `SCAN_TIME`, `HR_*_ID` ซึ่ง SCAN-WATCH เติม)
+**ต่อไป (B1 ส่วนที่เหลือ):** ถอดค่าที่ตัวเดิมใส่ในคอลัมน์รหัส (`COM_NAME`, `DAY_TYPE_ID/NAME`, `SCAN_TYPE`, `APP_TYPE_SAVE`, `ISCONFIRM`, `ISINPUT`) และที่มาของ `HR_*` (จาก `hr_person` ผ่าน `FINGLE_ID`) แล้วเทียบแถวที่ importer ใหม่ "จะสร้าง" กับแถวจริงของตัวเดิมทีละคอลัมน์
+
 ## ตัวป้องกัน 4 ชั้น
 | ชั้น | กติกา | กันเหตุการณ์ใด |
 |---|---|---|

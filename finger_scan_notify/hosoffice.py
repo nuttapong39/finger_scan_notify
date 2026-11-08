@@ -147,6 +147,16 @@ def get_old_device_rows_after(last_id, older_than_hours, upto_id):
             'oldest': r.get('oldest'), 'newest': r.get('newest')}
 
 
+def get_fill_sample(max_rows=400):
+    """แถวล่าสุดที่ตัวนำเข้าเดิมเขียน (มีเลขเครื่อง ไม่มีป้าย CREATE_BY) เป็น dict ทุกคอลัมน์ — ใช้เฉพาะสรุปว่าคอลัมน์ไหนถูกเติม
+    (ผู้เรียกต้องไม่แสดงค่า) ; ใช้ช่วง ID ที่มีดัชนี ไม่สแกนทั้งตาราง"""
+    top = get_max_scan_id()
+    if top is None:
+        raise HosofficeUnavailable('อ่านเลข ID ล่าสุดไม่ได้')
+    return _query(f"SELECT * FROM `{_tbl()}` WHERE ID > %s AND ID <= %s AND MACHIN_SCAN_ID IS NOT NULL AND CREATE_BY IS NULL "
+                  f"ORDER BY ID DESC LIMIT %s", (max(0, top - 30000), top, int(max_rows)))
+
+
 def count_new_rows_by_writer(last_id, writer, upto_id):
     """จำนวน/ช่วง ID ของแถวใหม่ (last_id < ID <= upto_id) ที่ผู้เขียนนี้สร้าง (CREATE_BY = writer) — ใช้จับผู้เขียนที่ปิดไปแล้วแต่กลับมาเขียน
     ช่วง ID ใช้ดัชนี PK ; ห้ามเปลี่ยนเป็น join/EXISTS ซ้อนกับคอลัมน์ที่ไม่มีดัชนี (MACHIN_SCAN_ID) บนฐานข้อมูลจริง"""

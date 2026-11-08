@@ -242,7 +242,44 @@ def cmd_tiger_check(args):
     return bad
 
 
-COMMANDS = {'tiger-check': cmd_tiger_check, 'init-admin': cmd_init_admin, 'reset-admin': cmd_reset_admin, 'backup': cmd_backup,
+# ── shadow-report ─────────────────────────────────────────────
+def cmd_shadow_report(args):
+    """โหมดเงา: เทียบเครื่องสแกนกับ hosoffice ว่า Scan importer ตัวใหม่ "จะ" ทำอะไร — อ่านอย่างเดียว ไม่เขียนทั้งสองฝั่ง ไม่แสดงชื่อ/รหัสบุคคล"""
+    from datetime import datetime
+
+    from scan_importer import shadow
+    if not tigersoft.configured():
+        print('✗ ยังไม่ได้ตั้งค่า TIGER_* ใน .env')
+        return 1
+    now = datetime.now()
+    try:
+        hos_rows = hosoffice.get_device_window(2000)
+        if not hos_rows:
+            print('✗ hosoffice ไม่มีแถวที่มี Device sequence ในช่วงล่าสุด')
+            return 1
+        floor, top = min(r['seq'] for r in hos_rows), max(r['seq'] for r in hos_rows)
+        source = tigersoft.get_rows_after(floor - 1)
+        sample = hosoffice.get_fill_sample()
+    except (hosoffice.HosofficeUnavailable, tigersoft.TigerUnavailable) as e:
+        print(f'✗ อ่านไม่สำเร็จ: {e}')
+        return 1
+    r = shadow.build_report(source, hos_rows, now, checkpoint=top)
+    print(f'ช่วงเลข {floor}–{top} ของ hosoffice เทียบกับเครื่องสแกน {r["source_rows"]} แถว (โหมดเงา ไม่ได้เขียนอะไร)')
+    print(f'  จะเขียน {r["would_insert"]} · จะกัก {r["would_hold"]} · มีอยู่แล้ว {r["already_present"]} · รอบนี้เกินเพดาน: {"ใช่" if r["flood"] else "ไม่"}')
+    print(f'  เวลาตรงกับที่เก็บไว้ {r["time_matches"]}/{r["already_present"]} · hosoffice มีแถวซ้ำเลขเดียวกัน {r["duplicated_in_hosoffice"]} เลข')
+    for label, key in (('จะเขียน (เลข)', 'insert_seqs'), ('จะกัก (เลข)', 'held_seqs'), ('เวลาไม่ตรง (เลข)', 'time_mismatch_seqs'),
+                       ('มีแต่ใน hosoffice (เลข)', 'only_in_hosoffice_seqs')):
+        if r[key]:
+            print(f'  {label}: {", ".join(str(x) for x in r[key])}')
+    p = shadow.fill_profile(sample)
+    print(f'\nการเติมคอลัมน์ของตัวนำเข้าเดิม (จาก {len(sample)} แถวล่าสุด):')
+    print('  เติมเสมอ     :', ', '.join(p['always']) or '-')
+    print('  ไม่เคยเติม   :', ', '.join(p['never']) or '-')
+    print('  เติมบางแถว   :', ', '.join(f'{c} ({v:.0%})' for c, v in p['sometimes'].items()) or '-')
+    return 0
+
+
+COMMANDS = {'shadow-report': cmd_shadow_report, 'tiger-check': cmd_tiger_check, 'init-admin': cmd_init_admin, 'reset-admin': cmd_reset_admin, 'backup': cmd_backup,
             'can-restart': cmd_can_restart, 'reset-checkpoint': cmd_reset_checkpoint, 'check': cmd_check}
 
 
