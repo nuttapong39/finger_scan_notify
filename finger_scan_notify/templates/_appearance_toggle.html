@@ -1,4 +1,4 @@
-{# ปุ่มสลับสว่าง/มืด — static/appearance.js ผูกปุ่มนี้ด้วย id #}
-<button type="button" class="icon-btn" id="appearance-toggle" aria-pressed="false" title="สลับเป็นโหมดมืด" aria-label="สลับเป็นโหมดมืด">
-  {{ icon('moon', 'when-light') }}{{ icon('sun', 'when-dark') }}
+{# ปุ่มสลับ Cyber/สว่าง — static/appearance.js ผูกปุ่มนี้ด้วย id (โหมดสว่างแสดงพระจันทร์ = ไป Cyber ; Cyber แสดงดวงอาทิตย์ = ไปสว่าง) #}
+<button type="button" class="icon-btn" id="appearance-toggle" aria-pressed="true" title="สลับเป็นโหมดสว่าง" aria-label="สลับเป็นโหมดสว่าง">
+  {{ icon('moon', 'when-light') }}{{ icon('sun', 'when-cyber') }}
 </button>

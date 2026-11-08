@@ -106,7 +106,10 @@ def test_emoji_inside_a_sample_of_the_real_line_message_is_the_only_exemption(pa
 # ── ไฟล์ static + หน้า login ───────────────────────────────
 def test_static_assets_open_without_logging_in(anon_client):
     for path, kind in [('/static/icons.svg', 'image/svg+xml'), ('/static/app.css', 'text/css'),
-                       ('/static/logo_ck.png', 'image/png'), ('/static/appearance.js', 'javascript')]:
+                       ('/static/logo_ck.png', 'image/png'), ('/static/appearance.js', 'javascript'),
+                       ('/static/login.css', 'text/css'), ('/static/login.js', 'javascript'),
+                       ('/static/fonts/ibm-plex-sans-thai-thai-400.woff2', 'font/woff2'),
+                       ('/static/fonts/orbitron-latin-700.woff2', 'font/woff2')]:
         r = anon_client.get(path)
         assert r.status_code == 200, path
         assert kind in r.content_type, (path, r.content_type)
@@ -132,38 +135,93 @@ def test_every_page_has_the_hospital_logo_and_favicon(pages, modal_page):
 
 
 # ── Appearance: สว่าง/มืด ─────────────────────────────────
-def test_every_page_has_the_appearance_toggle_and_sets_it_before_first_paint(pages, modal_page, login_page):
-    for name, html in all_html(pages, modal_page, login_page).items():
+def test_every_page_but_login_has_the_appearance_toggle_and_sets_it_before_first_paint(pages, modal_page):
+    for name, html in {**pages, 'modal': modal_page}.items():
         assert 'id="appearance-toggle"' in html, name
         head = html.split('<body', 1)[0]
         assert '/static/appearance.js' in head, f'{name}: ต้องตั้งโหมดสีใน <head> ไม่งั้นหน้ากะพริบ'
-        assert '<html lang="th">' in html, name            # server ไม่บังคับโหมดมืด → เริ่มเป็นสว่างเสมอ
+        assert '<html lang="th">' in html, name            # server ไม่บังคับโหมด → ค่าเริ่มต้นตัดสินที่ appearance.js
 
 
-def test_appearance_script_defaults_to_light_and_only_accepts_dark(admin_client):
+def test_appearance_script_defaults_to_cyber_reads_the_old_dark_value_and_only_accepts_light(admin_client):
     js = admin_client.get('/static/appearance.js').get_data(as_text=True)
-    assert "'light'" in js and "'dark'" in js
+    assert "'cyber'" in js and "'light'" in js
+    assert "'dark'" in js                               # ค่าที่เคยจำไว้ก่อนเปลี่ยนชื่อ ต้องอ่านเป็น cyber
     assert 'prefers-color-scheme' not in js            # ไม่ตามค่าของระบบปฏิบัติการ
     assert 'data-appearance' in js or 'dataset.appearance' in js
     assert 'localStorage' in js
 
 
-def test_stylesheet_has_light_as_root_and_dark_as_the_only_alternative(admin_client):
+def test_stylesheet_has_light_as_root_and_cyber_as_the_only_alternative(admin_client):
     css = admin_client.get('/static/app.css').get_data(as_text=True)
     assert 'prefers-color-scheme' not in css
-    assert '[data-appearance="dark"]' in css
+    assert '[data-appearance="cyber"]' in css
+    assert '[data-appearance="dark"]' not in css
     assert re.search(r':root\s*\{', css)
-    assert '[data-appearance="light"]' not in css       # มีแค่ Light (ค่าเริ่มต้น) กับ Dark
-    assert re.search(r'--shadow:\s*none', css)           # Minimal: การ์ดไม่มีเงา
+    assert '[data-appearance="light"]' not in css       # มีแค่ สว่าง (ค่า :root) กับ Cyber
 
 
-def test_dark_overrides_every_color_token_that_light_defines(admin_client):
+def test_cyber_overrides_every_color_token_that_light_defines(admin_client):
     css = admin_client.get('/static/app.css').get_data(as_text=True)
     light = re.search(r':root\s*\{(.*?)\}', css, re.S).group(1)
-    dark = re.search(r'\[data-appearance="dark"\]\s*\{(.*?)\}', css, re.S).group(1)
+    cyber = re.search(r'\[data-appearance="cyber"\]\s*\{(.*?)\}', css, re.S).group(1)
     tokens = lambda block: set(re.findall(r'(--(?:bg|border|text|accent|tint)[a-z0-9-]*)\s*:', block))
     assert tokens(light), 'ไม่พบ token สีใน :root'
-    assert tokens(light) <= tokens(dark), sorted(tokens(light) - tokens(dark))
+    assert tokens(light) <= tokens(cyber), sorted(tokens(light) - tokens(cyber))
+
+
+def test_no_page_depends_on_google_fonts_and_the_fonts_are_served_by_us(pages, login_page, admin_client):
+    for name, html in {**pages, '/login': login_page}.items():
+        assert 'fonts.googleapis.com' not in html and 'fonts.gstatic.com' not in html, name
+    css = admin_client.get('/static/app.css').get_data(as_text=True)
+    for face in ('IBM Plex Sans Thai', 'IBM Plex Mono', 'Orbitron'):
+        assert re.search(rf"@font-face\s*\{{[^}}]*font-family:\s*'{face}'", css), face
+    assert 'fonts.googleapis.com' not in css
+
+
+# ── หน้า Login แบบ Cyber / Terminal ───────────────────────────
+def test_login_page_is_always_cyber_with_an_fx_button_and_no_appearance_toggle(login_page):
+    assert re.search(r'<html[^>]+data-appearance="cyber"', login_page)
+    assert 'id="appearance-toggle"' not in login_page
+    assert 'id="fxToggle"' in login_page
+
+
+def test_login_page_keeps_the_real_form_fields_and_has_no_django_leftovers(login_page):
+    assert re.search(r'<form[^>]+method="POST"[^>]+action="/login"', login_page)
+    for name in ('username', 'password', 'next'):
+        assert re.search(rf'<input[^>]+name="{name}"', login_page), name
+    assert re.search(r'<input[^>]+name="password"[^>]+type="password"|<input[^>]+type="password"[^>]+name="password"', login_page)
+    assert '{%' not in login_page and '{{' not in login_page and 'csrfmiddlewaretoken' not in login_page
+    assert 'request.META' not in login_page
+
+
+def test_login_page_uses_its_own_versioned_css_and_js(login_page):
+    assert re.search(r'/static/login\.css\?v=\d+', login_page)
+    assert re.search(r'/static/login\.js\?v=\d+', login_page)
+
+
+def test_login_page_makes_no_claims_about_real_system_state_and_hides_the_visitor_ip(login_page):
+    for claim in ('STATUS: ONLINE', 'TLS', 'SECURE CHANNEL', 'CLIENT IP', 'NODE-01'):
+        assert claim not in login_page, claim
+    assert 'AUTHORIZED PERSONNEL ONLY' in login_page
+
+
+def test_wrong_password_shows_the_same_thai_message_inside_the_cyber_page(anon_client):
+    r = anon_client.post('/login', data={'username': 'admin', 'password': 'wrong-password'})
+    html = r.get_data(as_text=True)
+    assert r.status_code == 401
+    assert 'บัญชีหรือรหัสผ่านไม่ถูกต้อง' in html and 'role="alert"' in html
+    assert 'data-appearance="cyber"' in html
+
+
+def test_the_login_next_target_survives_in_a_hidden_field(anon_client):
+    html = anon_client.get('/login?next=/logs').get_data(as_text=True)
+    assert re.search(r'<input[^>]+type="hidden"[^>]+name="next"[^>]+value="/logs"', html)
+
+
+def test_login_stylesheet_turns_motion_off_for_reduced_motion_users(admin_client):
+    css = admin_client.get('/static/login.css').get_data(as_text=True)
+    assert 'prefers-reduced-motion' in css
 
 
 # ── ตัวอักษรย่อบุคลากร (ไม่ใช้รูปถ่าย) ────────────────────
@@ -192,7 +250,7 @@ def test_nginx_does_not_block_the_static_assets():
 
 
 def test_css_js_and_logo_urls_carry_a_version_so_browsers_do_not_keep_stale_files(login_page):
-    for name in ('app.css', 'appearance.js', 'logo_ck.png', 'icons.svg'):
+    for name in ('app.css', 'logo_ck.png', 'icons.svg'):
         pattern = rf'/static/{re.escape(name)}\?v=\d+' if name != 'icons.svg' else None
         if pattern:
             assert re.search(pattern, login_page), name

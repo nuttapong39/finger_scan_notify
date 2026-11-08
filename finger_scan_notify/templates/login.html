@@ -1,43 +1,115 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="th" data-appearance="cyber">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#030b08">
 <title>เข้าสู่ระบบ — Finger Scan Notify</title>
-{% include "_head_assets.html" %}
-<style>
-body { display:flex; align-items:center; justify-content:center; padding:16px; }
-.login-corner { position:fixed; top:16px; right:16px; }
-.login-card { width:100%; max-width:360px; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:32px 28px; }
-.brand { text-align:center; margin-bottom:22px; }
-.brand img { width:64px; height:64px; border-radius:14px; }
-.brand .hosp { font-size:13px; color:var(--text-muted); margin-top:10px; }
-.brand h1 { font-size:20px; margin-top:2px; }
-.login-card .btn { width:100%; margin-top:20px; padding:10px; font-size:15px; }
-.login-card .alert { margin:16px 0 0; }
-.hint { margin-top:18px; font-size:12px; color:var(--text-muted); text-align:center; line-height:1.6; }
-</style>
+<link rel="icon" type="image/png" href="{{ static_url('logo_ck.png') }}">
+<link rel="stylesheet" href="{{ static_url('app.css') }}">
+<link rel="stylesheet" href="{{ static_url('login.css') }}">
+{# เอฟเฟกต์พื้นหลัง: ตัดสินก่อนวาดหน้า (ปิดไว้ถ้าผู้ใช้ปิดเอง หรือระบบตั้งลดการเคลื่อนไหว) — หน้านี้เป็น Cyber เสมอ ไม่โหลด appearance.js #}
+<script>
+(function () {
+  var off = false, saved = null;
+  try { saved = localStorage.getItem('ckh-fx'); } catch (e) {}
+  if (saved === 'off') off = true;
+  else if (saved !== 'on' && window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) off = true;
+  if (off) document.documentElement.className += ' fx-off';
+})();
+</script>
 </head>
-<body>
-<div class="login-corner">{% include "_appearance_toggle.html" %}</div>
-<form class="login-card" method="POST" action="/login" autocomplete="off">
-  <div class="brand">
-    <img src="{{ static_url('logo_ck.png') }}" alt="ตราโรงพยาบาลเชียงกลาง" width="64" height="64">
-    <div class="hosp">โรงพยาบาลเชียงกลาง</div>
-    <h1>Finger Scan Notify</h1>
+<body class="login-body">
+
+<canvas id="matrix" aria-hidden="true"></canvas>
+<div class="fx-vignette" aria-hidden="true"></div>
+<div class="fx-scanlines" aria-hidden="true"></div>
+<div class="fx-scanbar" aria-hidden="true"></div>
+
+<header class="hud">
+  <div class="hud-group"><i class="pulse" aria-hidden="true"></i><span class="hl">CKH :: TERMINAL</span></div>
+  <div class="hud-group">
+    <span id="hudDate" class="hide-sm"></span>
+    <span class="sep hide-sm">|</span>
+    <span id="hudClock" class="hl">--:--:--</span>
+    <button type="button" id="fxToggle" class="fx-btn" aria-pressed="true" title="เปิด/ปิดเอฟเฟกต์พื้นหลัง">FX:ON</button>
   </div>
-  <input type="hidden" name="next" value="{{ next or '' }}">
-  <div class="form-group">
-    <label class="form-label" for="username">บัญชี</label>
-    <input class="form-control" id="username" name="username" value="admin" autocomplete="username" required>
+</header>
+
+<main class="stage">
+  <section class="panel panel-log" aria-hidden="true">
+    <div class="bar"><i class="d r"></i><i class="d y"></i><i class="d g"></i><span>terminal :: simulated</span></div>
+    <div class="term" id="termLog"></div>
+  </section>
+
+  <div class="login-shell">
+    <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+    <div class="beam">
+      <form class="card" method="POST" action="/login" autocomplete="off" id="loginForm">
+        <div class="bar">
+          <i class="d r"></i><i class="d y"></i><i class="d g"></i>
+          <span>operator@ckh:~$ ./login</span>
+          {{ icon('lock') }}
+        </div>
+
+        <div class="card-body">
+          <div class="logo">
+            <span class="ring ring-1"></span><span class="ring ring-2"></span>
+            <img src="{{ static_url('logo_ck.png') }}" width="64" height="64" alt="ตราโรงพยาบาลเชียงกลาง">
+          </div>
+          <p class="org">โรงพยาบาลเชียงกลาง</p>
+          <h1 class="glitch" data-text="FINGER SCAN NOTIFY">FINGER SCAN NOTIFY</h1>
+          <p class="typer"><span class="c-ok">&gt;</span> <span id="typer">ระบบแจ้งเตือนสแกนนิ้วเข้า-ออกงาน</span><span class="caret">_</span></p>
+
+          {% if error %}
+          <div class="alert err" role="alert"><b>[ACCESS DENIED]</b> <span>{{ error }}</span></div>
+          {% endif %}
+
+          <input type="hidden" name="next" value="{{ next or '' }}">
+
+          <div class="field">
+            <label for="username">บัญชี <em>// USER_ID</em></label>
+            <div class="input-wrap">
+              <span class="prefix">&gt;_</span>
+              <input id="username" name="username" type="text" value="admin" placeholder="username" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="password">รหัสผ่าน <em>// PASSKEY</em></label>
+            <div class="input-wrap">
+              <span class="prefix">#</span>
+              <input id="password" name="password" type="password" placeholder="••••••••" autocomplete="current-password" required autofocus>
+              <button type="button" class="eye" id="togglePw" aria-label="แสดงรหัสผ่าน" aria-pressed="false">{{ icon('eye') }}</button>
+            </div>
+            <p class="kbd-warn" id="kbdWarn" aria-live="polite"></p>
+          </div>
+
+          <button type="submit" class="btn" id="loginBtn">
+            <span class="btn-idle">{{ icon('log-in') }} เข้าสู่ระบบ</span>
+            <span class="btn-busy">{{ icon('loader-circle', 'spin') }} กำลังตรวจสอบ...</span>
+          </button>
+
+          <p class="hint">ลืมรหัสผ่าน? ให้ผู้ดูแล Server รัน<br><code>$ python manage.py reset-admin</code></p>
+        </div>
+      </form>
+    </div>
   </div>
-  <div class="form-group" style="margin-bottom:0;">
-    <label class="form-label" for="password">รหัสผ่าน</label>
-    <input class="form-control" id="password" name="password" type="password" autocomplete="current-password" required autofocus>
-  </div>
-  {% if error %}<div class="alert alert-error" role="alert">{{ icon('circle-x') }} <span>{{ error }}</span></div>{% endif %}
-  <button type="submit" class="btn btn-primary">{{ icon('log-in') }} เข้าสู่ระบบ</button>
-  <div class="hint">ลืมรหัส: ผู้ดูแล Server รัน <code>manage.py reset-admin</code></div>
-</form>
+
+  <section class="panel panel-scan" aria-hidden="true">
+    <div class="bar"><i class="d r"></i><i class="d y"></i><i class="d g"></i><span>scanner :: simulated</span></div>
+    <div class="scanner">{{ icon('scan-face') }}<span class="laser"></span></div>
+    <div class="hex" id="hexStream"></div>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>© <span id="yr"></span> โรงพยาบาลเชียงกลาง</span>
+  <span class="sep">|</span>
+  <span>AUTHORIZED PERSONNEL ONLY</span>
+</footer>
+
+<script src="{{ static_url('login.js') }}"></script>
 </body>
 </html>
