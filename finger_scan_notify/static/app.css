@@ -98,14 +98,27 @@
   --overlay:       rgba(0, 0, 0, .65);
 }
 
-/* พื้นหลังสไตล์ terminal ของหน้าภายใน: เส้นสแกนจาง + กริดเขียวจาง + แสงขอบ — นิ่งทั้งหมด ไม่มีภาพเคลื่อนไหว (ตารางต้องอ่านง่าย) */
+/* พื้นหลังสไตล์ terminal ของหน้าภายใน: เส้นสแกน + กริดเขียวจาง + แสงขอบ เคลื่อนไหวเบาๆ (กริดไหลช้า ๆ และมีแถบแสงกวาดลงทุก ~10 วินาที)
+   ใช้ transform/opacity อย่างเดียว (ไม่ทำให้วาดหน้าใหม่) ; ปิดทั้งหมดเมื่อผู้ใช้ตั้ง prefers-reduced-motion */
 [data-appearance="cyber"] body:not(.login-body)::before {
-  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  content: ""; position: fixed; left: 0; right: 0; bottom: 0; top: -48px; z-index: 0; pointer-events: none;
   background:
     repeating-linear-gradient(to bottom, rgba(255, 255, 255, .04) 0 1px, transparent 1px 3px),
     linear-gradient(rgba(0, 255, 156, .08) 1px, transparent 1px) 0 0 / 48px 48px,
     linear-gradient(90deg, rgba(0, 255, 156, .08) 1px, transparent 1px) 0 0 / 48px 48px,
-    radial-gradient(ellipse at 70% 0%, rgba(0, 255, 156, .12), transparent 60%);
+    radial-gradient(ellipse at 70% 20%, rgba(0, 255, 156, .12), transparent 60%);
+  animation: term-drift 8s linear infinite;
+}
+[data-appearance="cyber"] body:not(.login-body)::after {
+  content: ""; position: fixed; left: 0; right: 0; top: -22vh; height: 22vh; z-index: 0; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, rgba(0, 255, 156, .07), transparent);
+  animation: term-sweep 10s linear infinite;
+}
+@keyframes term-drift { to { transform: translateY(48px); } }
+@keyframes term-sweep { to { transform: translateY(135vh); } }
+@media (prefers-reduced-motion: reduce) {
+  [data-appearance="cyber"] body:not(.login-body)::before,
+  [data-appearance="cyber"] body:not(.login-body)::after { animation: none; }
 }
 [data-appearance="cyber"] .layout { position: relative; z-index: 1; }
 

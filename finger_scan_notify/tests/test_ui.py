@@ -294,10 +294,14 @@ def test_a_locked_out_visitor_sees_the_thai_wait_message_inside_the_cyber_page(a
     assert r.status_code == 429 and 'ลองใหม่ในอีก' in html and 'data-appearance="cyber"' in html
 
 
-def test_inner_pages_have_a_static_terminal_background_in_cyber_only(admin_client):
+def test_inner_pages_have_a_light_animated_terminal_background_in_cyber_only(admin_client):
     css = admin_client.get('/static/app.css').get_data(as_text=True)
-    rule = re.search(r'\[data-appearance="cyber"\] body:not\(\.login-body\)::before\s*\{(.*?)\}', css, re.S)
-    assert rule, 'ไม่มีพื้นหลัง terminal ของหน้าภายใน'
-    assert 'animation' not in rule.group(1)               # นิ่ง: ตารางภาษาไทยต้องอ่านง่าย
-    assert 'pointer-events: none' in rule.group(1)
-    assert re.search(r'--bg-base:\s*#0d0f12', css)          # พื้นดำเหมือนโหมดมืดเดิม
+    before = re.search(r'\[data-appearance="cyber"\] body:not\(\.login-body\)::before\s*\{(.*?)\}', css, re.S)
+    after = re.search(r'\[data-appearance="cyber"\] body:not\(\.login-body\)::after\s*\{(.*?)\}', css, re.S)
+    assert before and after, 'ไม่มีพื้นหลัง terminal ของหน้าภายใน'
+    for rule in (before.group(1), after.group(1)):
+        assert 'animation:' in rule and 'pointer-events: none' in rule      # เคลื่อนไหวเบา ๆ และไม่บังการคลิก
+    keyframes = ''.join(re.findall(r'@keyframes term-[a-z]+\s*\{.*?\}\s*\}', css, re.S))
+    assert 'transform' in keyframes and 'background-position' not in keyframes   # ใช้ transform ไม่ทำให้วาดหน้าใหม่
+    assert re.search(r'prefers-reduced-motion[^{]*\{[^}]*body:not\(\.login-body\)::before[^}]*animation:\s*none', css, re.S)
+    assert re.search(r'--bg-base:\s*#0d0f12', css)                          # พื้นดำเหมือนโหมดมืดเดิม
