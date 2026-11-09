@@ -81,8 +81,8 @@ GRANT SELECT, INSERT ON hosoffice.fingle_scan TO 'scan_importer_rw'@'<IP_dashboa
 FLUSH PRIVILEGES;
 ```
 
-ลำดับ: (1) โหมดเงาใช้บัญชี **อ่านอย่างเดียว** ก่อน (ยังไม่ต้องมี INSERT) (2) HR ยืนยันกติกาเติมคอลัมน์ (3) ล้างแถวซ้ำแล้วใส่ unique index `(MACHIN_ID, MACHIN_SCAN_ID)` โดยผู้ดูแล (`ALTER TABLE` ทำด้วยบัญชีผู้ดูแล **ไม่ใช่บัญชีของ importer**) (4) จึงสร้างบัญชีเขียนและเปิดโหมด `write`
-สำรอง `fingle_scan` ก่อนใส่ index และก่อนเปิด `write` ทุกครั้ง
+ลำดับ: (1) โหมดเงาใช้บัญชี **อ่านอย่างเดียว** ก่อน (ยังไม่ต้องมี INSERT) (2) HR ยืนยันกติกาเติมคอลัมน์ (3) ~~ล้างแถวซ้ำ + unique index~~ ตัดออกแล้ว (9 พ.ย. 2569: แถวซ้ำเก็บไว้ไม่แตะ กันซ้ำด้วยกุญแจในโค้ด) (4) สร้างบัญชีเขียน ใส่ใน `.env` ของเครื่อง importer (`HOSOFFICE_WRITE_USER`, `HOSOFFICE_WRITE_PASSWORD`, `SCAN_IMPORTER_COM_NAME`) แล้วเปลี่ยน `SCAN_IMPORTER_MODE=write` + restart
+สำรอง `fingle_scan` ก่อนเปิด `write` ทุกครั้ง ; ปิดส่วนนำเข้าของตัวเดิมก่อน เพื่อให้เหลือผู้เขียนคนเดียว
 
 ---
 
