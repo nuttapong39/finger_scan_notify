@@ -13,6 +13,7 @@ import settings
 TABLE = 'ZFP_TimeInOut'
 SEQ_COL = 'ID_TimeInout'          # = fingle_scan.MACHIN_SCAN_ID (Device sequence) — ยืนยันด้วย manage.py tiger-check
 TIME_COL = 'TimeInout'            # เวลาที่เครื่องบันทึก — ระดับนาทีเท่านั้น (วินาที = 00)
+MODE_COL = 'InOutMode'            # = fingle_scan.SCAN_TYPE (0 เข้า, 1 ออก, 4 เข้าพิเศษ, 5 ออกพิเศษ) — ยืนยันเทียบ 397 แถว
 COMMIT_COL = 'CommitTime'         # เวลาถึงวินาที — ค่านี้คือ SCAN_DATE_TIME ที่ตัวนำเข้าเดิมเก็บใน hosoffice (±1 วินาที)
 CHUNK = 500
 _IDENT = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
@@ -112,6 +113,7 @@ def _normalise(raw):
     except (KeyError, TypeError, ValueError):
         raise TigerUnavailable(f'ผลที่ได้ไม่มีคอลัมน์ {SEQ_COL} (ตรวจชื่อตารางด้วย manage.py tiger-check)') from None
     return {'seq': seq, 'time': raw.get(COMMIT_COL) or raw.get(TIME_COL), 'device_time': raw.get(TIME_COL),
+            'mode': None if raw.get(MODE_COL) is None else str(raw[MODE_COL]).strip(),
             'person': _whole(raw.get(person_col)) if person_col else None,
             'machine': _whole(raw.get(machine_col)) if machine_col else None}
 
@@ -137,7 +139,7 @@ def same_scan_time(hos_time, src):
 def get_rows_after(seq, limit=3000):
     """แถวที่ ID_TimeInout > seq เรียงตามเลข (สูงสุด limit แถว) — ใช้ในโหมดเงา/Scan importer ; รูปแบบเดียวกับ get_rows"""
     t = settings.current.tiger
-    wanted = [SEQ_COL, TIME_COL, COMMIT_COL, t['person_column'], t['machine_column']]
+    wanted = [SEQ_COL, TIME_COL, COMMIT_COL, MODE_COL, t['person_column'], t['machine_column']]
     for name in wanted:
         if name and not _IDENT.match(name):
             raise TigerUnavailable(f'ชื่อคอลัมน์ไม่ถูกต้อง: {name!r}')
@@ -154,7 +156,7 @@ def get_rows(seqs):
         return out
     t = settings.current.tiger
     # เลือกเฉพาะคอลัมน์ที่ใช้ (ตารางของเครื่องสแกนอาจมีรูป/ข้อมูลใบหน้าขนาดใหญ่) — ชื่อคอลัมน์จาก .env ตรวจรูปแบบก่อนต่อเข้า SQL
-    wanted = [SEQ_COL, TIME_COL, COMMIT_COL, t['person_column'], t['machine_column']]
+    wanted = [SEQ_COL, TIME_COL, COMMIT_COL, MODE_COL, t['person_column'], t['machine_column']]
     for name in wanted:
         if name and not _IDENT.match(name):
             raise TigerUnavailable(f'ชื่อคอลัมน์ไม่ถูกต้อง: {name!r}')

@@ -77,3 +77,33 @@ def test_shadow_report_command_needs_the_scanner_configuration(tmp_db, monkeypat
     monkeypatch.setattr(settings, 'current', settings.load({}))
     assert manage.main(['shadow-report']) == 1
     assert 'TIGER_' in capsys.readouterr().out
+
+
+# ── เทียบทีละคอลัมน์กับแถวจริงของตัวเดิม ─────────────────────────
+def real(seq, person=7, mode='0', when=None, **kw):
+    t = when or (NOW - timedelta(minutes=5)).replace(second=14)
+    base = {'ID': seq, 'PERSON_ID': 1000 + person, 'FINGLE_ID': str(person), 'SCAN_DATE_TIME': t, 'MACHIN_ID': 1, 'MACHIN_SCAN_ID': seq,
+            'SCAN_TYPE': mode, 'DAY_TYPE_ID': (t.weekday() + 1) % 7 + 1, 'COM_NAME': 'PC', 'APP_TYPE_SAVE': 'WIN',
+            'ISCONFIRM': 'False', 'ISINPUT': 'FACESCAN', 'HR_FULLNAME': 'n', 'HR_POSITION_NAME': 'p', 'HR_LEAVEL_NAME': None,
+            'HR_DEP_NAME': 'd', 'HR_DEP_SUB_NAME': 's', 'HR_PERSON_TYPE_NAME': 't', 'DAY_TYPE_NAME': None}
+    base['DAY_TYPE_NAME'] = __import__('scan_importer.plan', fromlist=['x']).WEEKDAYS_TH[t.weekday()]
+    return dict(base, **kw)
+
+
+def source(seq, person=7, mode='0'):
+    return dict(src(seq, person=None) if False else src(seq), person=person, mode=mode)
+
+
+def test_comparison_says_which_columns_differ_from_the_old_importer_and_how_many_rows_it_could_check():
+    sample = [real(10), real(11), real(12, mode='1'), real(13, person=8)]            # 13 เป็นคนเดียวที่ไม่มีแถวอื่นให้คัดลอก HR_*
+    sources = {s: source(s, mode='0') for s in (10, 11, 12)}
+    sources[13] = source(13, person=8)
+    c = shadow.compare_with_real(sample, sources, {'COM_NAME': 'PC'})
+    assert c['compared'] == 3 and c['no_template'] == 1 and c['source_missing'] == 0
+    assert c['identical'] == 2 and c['differing'] == {'SCAN_TYPE': 1}
+
+
+def test_comparison_skips_rows_the_scanner_no_longer_has_and_rows_without_a_sequence():
+    c = shadow.compare_with_real([real(10), real(11), {'ID': 1}], {10: source(10)}, {'COM_NAME': 'PC'})
+    assert c['source_missing'] == 1 and c['compared'] == 1 and c['no_template'] == 0
+    assert 'p' not in repr(c['differing'])

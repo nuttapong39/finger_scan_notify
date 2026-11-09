@@ -131,8 +131,8 @@ def test_not_configured_means_unavailable_not_a_crash(monkeypatch):
 def test_rows_are_looked_up_by_sequence_with_bound_parameters_and_normalised(tiger):
     tiger['rows'] = {10: src_row(10, at(8, 1)), 11: src_row(11, at(8, 2), person=9, machine=3)}
     got = tigersoft.get_rows([10, 11, 12])
-    assert got == {10: {'seq': 10, 'time': at(8, 1), 'device_time': at(8, 1), 'person': 7, 'machine': 2},
-                   11: {'seq': 11, 'time': at(8, 2), 'device_time': at(8, 2), 'person': 9, 'machine': 3}}      # 12 ไม่มีที่เครื่อง → ไม่อยู่ในผล
+    assert got == {10: {'seq': 10, 'time': at(8, 1), 'device_time': at(8, 1), 'person': 7, 'machine': 2, 'mode': None},
+                   11: {'seq': 11, 'time': at(8, 2), 'device_time': at(8, 2), 'person': 9, 'machine': 3, 'mode': None}}      # 12 ไม่มีที่เครื่อง → ไม่อยู่ในผล
     sql, params = tiger['conn'].executed[0]
     assert params == (10, 11, 12) and '10' not in sql and 'ZFP_TimeInOut' in sql
     assert tiger['conn'].closed
@@ -452,3 +452,10 @@ def test_tiger_check_counts_a_row_as_matching_when_hosoffice_stored_the_commit_s
     tiger['rows'] = {9: dict(src_row(9, at(8, 1)), CommitTime=at(8, 1, 14)), 10: dict(src_row(10, at(8, 2)), CommitTime=at(8, 2, 9))}
     assert manage.main(['tiger-check']) == 0
     assert '2/2' in capsys.readouterr().out
+
+
+def test_the_scanner_in_out_mode_is_carried_as_text_and_requested_in_the_select(tiger):
+    tiger['rows'] = {10: dict(src_row(10, at(8, 1)), InOutMode='4')}
+    got = tigersoft.get_rows([10])
+    assert got[10]['mode'] == '4'
+    assert 'InOutMode' in tiger['conn'].executed[0][0]

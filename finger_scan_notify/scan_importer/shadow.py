@@ -68,3 +68,30 @@ def value_profile(rows, columns=CODE_COLUMNS):
         counts = Counter(repr(r.get(c)) for r in rows)
         out[c] = dict(counts.most_common()) if len(counts) <= MAX_DISTINCT else {'__distinct__': len(counts)}
     return out
+
+
+def compare_with_real(sample, sources, consts):
+    """สร้างแถวด้วย plan.build_row จากแถวต้นทาง แล้วเทียบกับแถวจริงที่ตัวเดิมเขียน (sample) ทีละคอลัมน์
+    template ของแต่ละแถว = แถวอื่นล่าสุดของคนเดียวกันใน sample (sample เรียง ID มากไปน้อย) ; PERSON_ID ใช้ของแถวจริง
+    คืนแต่จำนวนกับชื่อคอลัมน์ที่ไม่ตรง — ไม่มีค่า"""
+    out = {'compared': 0, 'identical': 0, 'differing': {}, 'no_template': 0, 'source_missing': 0}
+    for r in sample:
+        seq = r.get('MACHIN_SCAN_ID')
+        if seq is None:
+            continue
+        src = sources.get(int(seq))
+        if src is None:
+            out['source_missing'] += 1
+            continue
+        template = next((o for o in sample if o is not r and o.get('PERSON_ID') == r.get('PERSON_ID')), None)
+        built = plan.build_row(src, r.get('PERSON_ID'), template, consts)
+        if built is None:
+            out['no_template'] += 1
+            continue
+        out['compared'] += 1
+        diff = plan.differing_columns(built, r)
+        if not diff:
+            out['identical'] += 1
+        for c in diff:
+            out['differing'][c] = out['differing'].get(c, 0) + 1
+    return out

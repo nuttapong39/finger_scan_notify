@@ -2,7 +2,7 @@
 
 แถวต้นทาง = รูปแบบเดียวกับ tigersoft._normalise: {'seq','machine','person','time','device_time'}
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 HOLD_AFTER = timedelta(hours=24)        # แถวเก่ากว่านี้ไม่เขียนเอง
 FUTURE_SKEW = timedelta(hours=1)        # เวลาล้ำอนาคตเกินนี้ = นาฬิกาเครื่องเพี้ยน ไม่เขียนเอง
@@ -71,3 +71,36 @@ def plan_release(held_rows, existing_keys, seq_from, seq_to):
     return {'insert': insert, 'duplicate': duplicate, 'unreleasable': unreleasable, 'writer': RELEASE_WRITER,
             'summary': {'count': len(insert), 'oldest': times[0] if times else None, 'newest': times[-1] if times else None,
                         'per_day': per_day}}
+
+
+WEEKDAYS_TH = ('จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์')     # ตาม datetime.weekday()
+OLD_IMPORTER_CONSTANTS = {'APP_TYPE_SAVE': 'WIN', 'ISCONFIRM': 'False', 'ISINPUT': 'FACESCAN'}
+HR_COPIED = ('HR_FULLNAME', 'HR_POSITION_NAME', 'HR_LEAVEL_NAME', 'HR_DEP_NAME', 'HR_DEP_SUB_NAME', 'HR_PERSON_TYPE_NAME')
+
+
+def build_row(src, person_id, template, consts):
+    """แถว fingle_scan ที่จะเขียนสำหรับแถวต้นทางนี้ (dict คอลัมน์→ค่า) หรือ None ถ้าสร้างไม่ได้ → ผู้เรียกกักแถวไว้ ไม่เดา
+    template = แถวล่าสุดของคนเดียวกันที่ตัวเดิมเขียน (ใช้คัดลอก HR_*) ; consts ต้องมี COM_NAME ; ล้วน ไม่มี I/O"""
+    t = row_time(src)
+    if t is None or person_id is None or template is None:
+        return None
+    row = {'PERSON_ID': person_id, 'FINGLE_ID': None if src.get('person') is None else str(src['person']).strip(), 'SCAN_DATE_TIME': t,
+           'MACHIN_ID': src.get('machine'), 'MACHIN_SCAN_ID': src['seq'], 'SCAN_TYPE': src.get('mode'),
+           'DAY_TYPE_ID': (t.weekday() + 1) % 7 + 1, 'DAY_TYPE_NAME': WEEKDAYS_TH[t.weekday()],
+           'COM_NAME': consts['COM_NAME'], **OLD_IMPORTER_CONSTANTS}
+    row.update({c: template.get(c) for c in HR_COPIED})
+    return row
+
+
+TIME_TOLERANCE_S = 2     # ตัวเดิมเก็บ CommitTime คลาดได้ ~1–2 วินาที (ยืนยันกับของจริง) — ไม่นับเป็นความต่าง
+
+
+def _same(a, b):
+    if isinstance(a, datetime) and isinstance(b, datetime):
+        return abs((a - b).total_seconds()) <= TIME_TOLERANCE_S
+    return a == b
+
+
+def differing_columns(built, real):
+    """ชื่อคอลัมน์ที่ค่าไม่ตรงกัน (เฉพาะคอลัมน์ที่ built มี ; เวลาคลาดได้ TIME_TOLERANCE_S) — คืนแต่ชื่อ ไม่คืนค่า เพื่อไม่ให้รายงานมีข้อมูลบุคคล"""
+    return [c for c, v in built.items() if not _same(v, real.get(c))]
