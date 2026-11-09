@@ -8,6 +8,7 @@ HOLD_AFTER = timedelta(hours=24)        # แถวเก่ากว่าน�
 FUTURE_SKEW = timedelta(hours=1)        # เวลาล้ำอนาคตเกินนี้ = นาฬิกาเครื่องเพี้ยน ไม่เขียนเอง
 BATCH_CAP = 300                         # รอบเดียวเขียนเกินนี้ = กักทั้งรอบ (กันท่วมระบบที่แจ้งตามแถวใหม่)
 RELEASE_WRITER = 'SCAN-IMPORTER-RELEASED'    # ป้าย CREATE_BY ของแถวที่ปล่อยจากที่กัก — ระบบอื่นแยกออกได้ว่าไม่ใช่สแกนสด
+MANUAL_WRITER = 'SCAN-IMPORTER-MANUAL'          # แถวที่คนสั่งนำเข้าจากเครื่องสแกนตามเลขที่ระบุเอง (หน้า Watch)
 
 
 def row_key(src):

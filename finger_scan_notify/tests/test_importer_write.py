@@ -58,6 +58,7 @@ def wr(tmp_db, monkeypatch):
     monkeypatch.setattr(hosoffice, 'get_person_ids', lambda ids: {str(i): st['people'][str(i)] for i in ids if str(i) in st['people']})
     monkeypatch.setattr(hosoffice, 'get_latest_rows_by_person', lambda ids: {i: st['templates'][i] for i in ids if i in st['templates']})
     monkeypatch.setattr(hosoffice, 'insert_scan_rows', insert)
+    monkeypatch.setattr(tigersoft, 'get_rows', lambda seqs: {r['seq']: r for r in st['rows'] if r['seq'] in set(seqs)})
     st['profiles'] = {}
     monkeypatch.setattr(hosoffice, 'get_hr_profiles', lambda ids: {i: st['profiles'][i] for i in ids if i in st['profiles']})
     return st
@@ -99,6 +100,67 @@ def test_an_earlier_row_wins_over_the_hr_data(wr):
     wr['rows'] = [src(101)]
     runner.run_round(NOW)
     assert wr['inserted'][0][1][0]['HR_FULLNAME'] == 'n'
+
+
+# ── นำเข้าตามเลขที่ระบุเอง (สแกนที่ตกหล่นก่อนจุดเริ่มต้น) ──
+def fresh(seq, person=7, machine=1):
+    t = datetime.now() - timedelta(minutes=5)
+    return {'seq': seq, 'machine': machine, 'person': person, 'time': t, 'device_time': t.replace(second=0), 'mode': '0'}
+
+
+def test_manual_preview_reads_the_scanner_and_writes_nothing(admin_client, wr):
+    wr['rows'] = [fresh(201), fresh(202), fresh(203, person=9)]       # 9 ไม่มีใน hr_person → สร้างแถวไม่ได้
+    wr['existing'] = {(1, 202)}
+    d = admin_client.get('/api/importer/manual-preview?from=200&to=203').get_json()
+    assert (d['on_scanner'], d['not_on_scanner'], d['will_write'], d['already_present'], d['unreleasable']) == (3, 1, 1, 1, [203])
+    assert d['writer'] == 'SCAN-IMPORTER-MANUAL' and wr['inserted'] == []
+
+
+def test_manual_import_writes_with_the_manual_label_and_records_who(admin_client, wr):
+    wr['rows'] = [fresh(201), fresh(202)]
+    r = admin_client.post('/api/importer/manual-import', json={'from': 201, 'to': 202, 'expect': 2})
+    assert r.status_code == 200 and r.get_json()['written'] == 2
+    writer, rows = wr['inserted'][-1]
+    assert writer == 'SCAN-IMPORTER-MANUAL' and [x['MACHIN_SCAN_ID'] for x in rows] == [201, 202]
+    audit = admin_client.get('/api/importer/status').get_json()['audit'][0]
+    assert audit['action'] == 'manual-import' and audit['who'] == 'admin' and audit['detail']['written'] == 2
+
+
+def test_manual_import_with_a_stale_count_or_outside_write_mode_writes_nothing(admin_client, wr, monkeypatch):
+    wr['rows'] = [fresh(201), fresh(202)]
+    assert admin_client.post('/api/importer/manual-import', json={'from': 201, 'to': 202, 'expect': 1}).status_code == 409
+    monkeypatch.setattr(settings, 'current', settings.load({**WRITE_ENV, 'SCAN_IMPORTER_MODE': 'shadow'}))
+    assert admin_client.post('/api/importer/manual-import', json={'from': 201, 'to': 202, 'expect': 2}).status_code == 409
+    assert wr['inserted'] == []
+
+
+def test_manual_import_twice_does_not_write_twice(admin_client, wr):
+    wr['rows'] = [fresh(201)]
+    assert admin_client.post('/api/importer/manual-import', json={'from': 201, 'to': 201, 'expect': 1}).status_code == 200
+    wr['existing'] = {(1, 201)}
+    r = admin_client.post('/api/importer/manual-import', json={'from': 201, 'to': 201, 'expect': 0})
+    assert r.get_json()['written'] == 0 and sum(len(rows) for _, rows in wr['inserted']) == 1
+
+
+def test_manual_import_rejects_oversized_ranges_and_incomplete_bodies(admin_client, wr):
+    assert admin_client.get('/api/importer/manual-preview?from=1&to=100000').status_code == 400
+    assert admin_client.get('/api/importer/manual-preview?from=5&to=1').status_code == 400
+    assert admin_client.post('/api/importer/manual-import', json={'from': 1, 'to': 2}).status_code == 400
+
+
+def test_manual_import_needs_login(anon_client, wr):
+    assert anon_client.get('/api/importer/manual-preview?from=1&to=2').status_code == 401
+    assert anon_client.post('/api/importer/manual-import', json={}).status_code == 401
+
+
+def test_manual_import_clears_a_matching_held_row(admin_client, wr):
+    database.save_importer_state(checkpoint=100)
+    wr['rows'] = [src(101, minutes_ago=3000)]
+    runner.run_round(NOW)                                             # 101 ถูกกัก (เก่าเกิน 24 ชม.)
+    assert len(database.get_importer_held()) == 1
+    wr['rows'] = [fresh(101)]                                          # เครื่องสแกนมีเลข 101 (เวลาปัจจุบันจำลอง เพื่อไม่ชนเพดานอายุ)
+    assert admin_client.post('/api/importer/manual-import', json={'from': 101, 'to': 101, 'expect': 1}).status_code == 200
+    assert database.get_importer_held() == []
 
 
 def test_a_failed_insert_keeps_the_checkpoint_and_the_next_round_retries(wr):

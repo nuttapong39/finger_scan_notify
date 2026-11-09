@@ -47,6 +47,13 @@
     <button class="btn btn-outline btn-sm" id="imp-preview">{{ icon('search') }} ดูตัวอย่างการปล่อย (ยังไม่เขียน)</button>
     <button class="btn btn-primary btn-sm" id="imp-release" disabled>{{ icon('send') }} ยืนยันปล่อย</button>
   </div>
+  <div class="w-row" style="margin-bottom:10px;">
+    <label class="form-label" for="man-from" style="margin:0;" title="สแกนที่เครื่องสแกนมีแต่ hosoffice ไม่มี (เช่น Lost scan ก่อนจุดเริ่มต้น) — อ่านจากเครื่องสแกนตรง ๆ">นำเข้าตามเลขจากเครื่องสแกน</label>
+    <input id="man-from" class="form-control" type="number" min="0" placeholder="จากเลข" style="width:130px; padding:5px 10px;">
+    <input id="man-to" class="form-control" type="number" min="0" placeholder="ถึงเลข" style="width:130px; padding:5px 10px;">
+    <button class="btn btn-outline btn-sm" id="man-preview">{{ icon('search') }} ดูตัวอย่าง (ยังไม่เขียน)</button>
+    <button class="btn btn-primary btn-sm" id="man-import" disabled>{{ icon('send') }} ยืนยันนำเข้า</button>
+  </div>
   <div class="form-hint" id="imp-write-note"></div>
   <div id="imp-preview-box" class="form-hint" style="margin-top:8px;"></div>
   <div id="imp-audit" class="form-hint" style="margin-top:6px;"></div>
@@ -174,10 +181,13 @@
                    no_person: 'ไม่พบคนใน hr_person', no_template: 'ไม่มีแถวต้นแบบ HR (คนที่ยังไม่เคยมีแถวใน hosoffice)' };
   const MODE = { off: 'ปิดอยู่', shadow: 'โหมดเงา (เทียบอย่างเดียว ไม่เขียน)', write: 'โหมดเขียน (เขียน hosoffice จริง)' };
   let impWrite = { can: false, reason: '' };
+  let manPreview = null;      // ตัวอย่างนำเข้าตามเลขที่ดูแล้ว {lo, hi, n}
   let impPreview = null;      // ตัวอย่างล่าสุดที่ดูแล้ว {lo, hi, n} — ปุ่มปล่อยใช้ได้เมื่อช่วงเลขตรงกับตัวอย่างและมีแถวให้เขียน
   function syncRelease() {
     const ok = impWrite.can && impPreview && impPreview.n > 0 && String(impPreview.lo) === $('imp-from').value && String(impPreview.hi) === $('imp-to').value;
     $('imp-release').disabled = !ok;
+    const mok = impWrite.can && manPreview && manPreview.n > 0 && String(manPreview.lo) === $('man-from').value && String(manPreview.hi) === $('man-to').value;
+    $('man-import').disabled = !mok;
   }
   function renderImporter(d) {
     $('imp-mode').textContent = MODE[d.mode] || d.mode;
@@ -205,9 +215,9 @@
     if (msg) setIconText(err, 'triangle-alert', msg);
     impWrite = { can: d.can_write, reason: d.write_blocked_reason };
     syncRelease();
-    $('imp-write-note').textContent = impWrite.can ? 'ปุ่มปล่อยใช้ได้หลังดูตัวอย่างของช่วงเลขนั้นแล้ว' : impWrite.reason;
+    $('imp-write-note').textContent = impWrite.can ? 'ปุ่มปล่อย/นำเข้าใช้ได้หลังดูตัวอย่างของช่วงเลขนั้นแล้ว' : 'ปล่อยแถวที่กัก/นำเข้าตามเลข ใช้ได้เฉพาะโหมด write (SCAN_IMPORTER_MODE=write ใน .env)';
     const a = (d.audit || [])[0];
-    $('imp-audit').textContent = a ? `ล่าสุด: ${a.who || '-'} ปล่อยเลข ${a.detail.from}–${a.detail.to} เขียน ${a.detail.written} แถว เมื่อ ${a.at}` : '';
+    $('imp-audit').textContent = a ? `ล่าสุด: ${a.who || '-'} ${a.action === 'manual-import' ? 'นำเข้าตามเลข' : 'ปล่อยเลข'} ${a.detail.from}–${a.detail.to} เขียน ${a.detail.written} แถว เมื่อ ${a.at}` : '';
   }
   function loadImporter() {
     fetch('/api/importer/status').then(r => r.json()).then(d => { if (d.success) renderImporter(d); }).catch(() => {});
@@ -233,7 +243,31 @@
           el('div', `เวลาสแกน ${d.oldest || '-'} ถึง ${d.newest || '-'} · ต่อวัน: ${days} · ป้ายผู้เขียน ${d.writer}`));
       }).catch(() => { box.textContent = 'เชื่อมต่อไม่ได้'; });
   });
-  ['imp-from', 'imp-to'].forEach(id => $(id).addEventListener('input', syncRelease));
+  ['imp-from', 'imp-to', 'man-from', 'man-to'].forEach(id => $(id).addEventListener('input', syncRelease));
+  $('man-preview').addEventListener('click', () => {
+    const box = $('imp-preview-box');
+    const lo = $('man-from').value, hi = $('man-to').value;
+    if (lo === '' || hi === '') { box.textContent = 'ระบุช่วงเลข จาก–ถึง'; return; }
+    fetch(`/api/importer/manual-preview?from=${encodeURIComponent(lo)}&to=${encodeURIComponent(hi)}`)
+      .then(r => r.json()).then(d => {
+        if (!d.success) { box.textContent = d.message; manPreview = null; syncRelease(); return; }
+        manPreview = { lo, hi, n: d.will_write }; syncRelease();
+        const days = Object.entries(d.per_day).map(([k, v]) => `${k}=${v}`).join(' · ') || '-';
+        box.replaceChildren(
+          el('div', `ตัวอย่างนำเข้าตามเลข (ยังไม่ได้เขียนอะไร) — เครื่องสแกนมี ${d.on_scanner} เลข · ไม่มีในเครื่อง ${d.not_on_scanner} · จะเขียน ${d.will_write} · มีใน hosoffice แล้ว ${d.already_present}` +
+                    ` · เขียนไม่ได้ ${d.unreleasable.length}${d.unreleasable.length ? ' (เลข ' + d.unreleasable.join(', ') + ' — ข้อมูล HR ไม่ครบ/ไม่พบคน)' : ''}`),
+          el('div', `เวลาสแกน ${d.oldest || '-'} ถึง ${d.newest || '-'} · ต่อวัน: ${days} · ป้ายผู้เขียน ${d.writer}`));
+      }).catch(() => { box.textContent = 'เชื่อมต่อไม่ได้'; });
+  });
+  $('man-import').addEventListener('click', () => {
+    if (!manPreview) return;
+    if (!confirm(`นำเข้า ${manPreview.n} แถว (เลข ${manPreview.lo}–${manPreview.hi}) จากเครื่องสแกนลง hosoffice จริง? ย้อนกลับไม่ได้จากหน้านี้`)) return;
+    $('man-import').disabled = true;
+    fetch('/api/importer/manual-import', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: manPreview.lo, to: manPreview.hi, expect: manPreview.n }) })
+      .then(r => r.json()).then(d => { $('imp-preview-box').textContent = d.message; manPreview = null; loadImporter(); })
+      .catch(() => { $('imp-preview-box').textContent = 'เชื่อมต่อไม่ได้ — ตรวจสถานะก่อนกดซ้ำ'; });
+  });
   $('imp-release').addEventListener('click', () => {
     if (!impPreview) return;
     if (!confirm(`ปล่อย ${impPreview.n} แถว (เลข ${impPreview.lo}–${impPreview.hi}) ลง hosoffice จริง? ย้อนกลับไม่ได้จากหน้านี้`)) return;

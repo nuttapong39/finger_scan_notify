@@ -100,3 +100,48 @@ def api_release():
     except (hosoffice.HosofficeUnavailable, hosoffice.HosofficeWriteError) as e:
         return jsonify({'success': False, 'message': f'ปล่อยไม่สำเร็จ ไม่มีแถวถูกเขียน ({e})'}), 503
     return jsonify({'success': True, 'written': n, 'message': f'ปล่อยแล้ว {n} แถว'})
+
+
+def _range_args():
+    try:
+        lo, hi = int(request.args['from']), int(request.args['to'])
+    except (KeyError, ValueError):
+        return None, None, (jsonify({'success': False, 'message': 'ระบุช่วงเลข from และ to เป็นตัวเลข'}), 400)
+    return lo, hi, None
+
+
+@bp.route('/api/importer/manual-preview')
+def api_manual_preview():
+    lo, hi, err = _range_args()
+    if err:
+        return err
+    try:
+        mp = runner.manual_plan(lo, hi)
+    except ValueError as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
+    except (tigersoft.TigerUnavailable, hosoffice.HosofficeUnavailable) as e:
+        return jsonify({'success': False, 'message': f'อ่านฐานข้อมูลไม่ได้ ({e})'}), 503
+    p = mp['plan']
+    s = p['summary']
+    bad = sorted({r['seq'] for r in p['unreleasable']} | {r['seq'] for r, _ in mp['unbuildable']})
+    return jsonify({'success': True, 'dry_run': True, 'on_scanner': mp['on_scanner'], 'not_on_scanner': mp['not_on_scanner'],
+                    'will_write': len(mp['built']), 'already_present': len(p['duplicate']), 'unreleasable': bad[:50],
+                    'oldest': _minute(s['oldest']), 'newest': _minute(s['newest']), 'per_day': s['per_day'], 'writer': plan.MANUAL_WRITER})
+
+
+@bp.route('/api/importer/manual-import', methods=['POST'])
+def api_manual_import():
+    body = request.get_json(silent=True) or {}
+    try:
+        lo, hi, expect = int(body['from']), int(body['to']), int(body['expect'])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'ต้องระบุ from, to และ expect (จำนวนที่เห็นในตัวอย่าง) เป็นตัวเลข'}), 400
+    try:
+        n = runner.manual_import(lo, hi, expect, session.get('admin'))
+    except ValueError as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
+    except runner.ReleaseRefused as e:
+        return jsonify({'success': False, 'message': str(e)}), 409
+    except (tigersoft.TigerUnavailable, hosoffice.HosofficeUnavailable, hosoffice.HosofficeWriteError) as e:
+        return jsonify({'success': False, 'message': f'นำเข้าไม่สำเร็จ ไม่มีแถวถูกเขียน ({e})'}), 503
+    return jsonify({'success': True, 'written': n, 'message': f'นำเข้าแล้ว {n} แถว'})

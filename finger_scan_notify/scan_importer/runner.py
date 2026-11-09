@@ -163,3 +163,43 @@ def release(lo, hi, expect, who, now=None):
     database.add_importer_audit(who, 'release', {'from': lo, 'to': hi, 'written': n, 'already_present': len(p['duplicate']),
                                                  'unreleasable': len(p['unreleasable']) + len(rp['unbuildable'])}, now.timestamp())
     return n
+
+
+# ── นำเข้าตามเลขที่ระบุเอง (อ่านจากเครื่องสแกนโดยตรง ไม่ผ่านจุดล่าสุด) ─────────────────
+MANUAL_MAX = 200                         # ช่วงเลขต่อครั้ง
+MANUAL_MAX_AGE = timedelta(days=60)      # เก่ากว่านี้ตรวจแถวซ้ำด้วยดัชนีเวลาไม่ได้ผลน่าเชื่อถือ → ไม่ทำ
+
+
+def manual_plan(lo, hi, now=None):
+    """แผนนำเข้าเลข lo–hi จากเครื่องสแกน (อ่านอย่างเดียว) — ใช้กับสแกนที่ตกหล่นก่อนจุดเริ่มต้น ; ข้ามแถวที่ hosoffice มีกุญแจนั้นแล้ว
+    ValueError = ช่วงเลขไม่ถูกต้อง/ใหญ่เกิน/เก่าเกิน ; TigerUnavailable / HosofficeUnavailable = ต่อฐานข้อมูลไม่ได้"""
+    now = now or datetime.now()
+    if hi < lo or hi - lo + 1 > MANUAL_MAX:
+        raise ValueError(f'ช่วงเลขต้องไม่เกิน {MANUAL_MAX} เลขต่อครั้ง และ from ต้องไม่มากกว่า to')
+    rows = list(tigersoft.get_rows(range(lo, hi + 1)).values())
+    times = [t for t in (plan.row_time(r) for r in rows) if t]
+    existing = set()
+    if times:
+        if min(times) < now - MANUAL_MAX_AGE:
+            raise ValueError(f'มีสแกนเก่ากว่า {MANUAL_MAX_AGE.days} วัน — ตรวจแถวซ้ำแบบอัตโนมัติไม่ได้ ให้ผู้ดูแลตรวจเอง')
+        existing = hosoffice.get_existing_keys(min(times) - EXISTING_LOOKBACK)
+    p = plan.plan_release(rows, existing, lo, hi)
+    built, unbuildable = build_rows(p['insert']) if p['insert'] else ([], [])
+    return {'plan': p, 'built': built, 'unbuildable': unbuildable, 'on_scanner': len(rows), 'not_on_scanner': hi - lo + 1 - len(rows)}
+
+
+def manual_import(lo, hi, expect, who, now=None):
+    """เขียนสแกนเลข lo–hi จากเครื่องสแกนลง hosoffice (ป้าย SCAN-IMPORTER-MANUAL) — เฉพาะโหมด write และเมื่อจำนวนตรงกับตัวอย่างที่ผู้ใช้เห็น ;
+    คืนจำนวนที่เขียน ; บันทึก audit ว่าใครสั่ง ; แถวที่เคยกักไว้ในช่วงนี้ถูกทำเครื่องหมายว่าจัดการแล้ว"""
+    now = now or datetime.now()
+    if settings.current.importer_mode != 'write':
+        raise ReleaseRefused('นำเข้าได้เฉพาะโหมด write (SCAN_IMPORTER_MODE=write)')
+    mp = manual_plan(lo, hi, now)
+    if len(mp['built']) != int(expect):
+        raise ReleaseRefused(f'จำนวนที่จะเขียนเปลี่ยนไปแล้ว (ตัวอย่างเห็น {expect}, ตอนนี้ {len(mp["built"])}) — ดูตัวอย่างใหม่อีกครั้ง')
+    n = hosoffice.insert_scan_rows(mp['built'], plan.MANUAL_WRITER)
+    p = mp['plan']
+    database.mark_importer_released([(r['machine'], r['seq']) for r in p['insert'] + p['duplicate']], now.timestamp())
+    database.add_importer_audit(who, 'manual-import', {'from': lo, 'to': hi, 'written': n, 'already_present': len(p['duplicate']),
+                                                       'unreleasable': len(p['unreleasable']) + len(mp['unbuildable'])}, now.timestamp())
+    return n
