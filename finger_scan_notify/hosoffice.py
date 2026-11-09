@@ -186,6 +186,30 @@ def get_names_by_fingle_ids(fingle_ids):
     return {str(r['FINGLE_ID']).strip(): (r['name'] or '').strip() for r in rows}
 
 
+def get_person_ids(fingle_ids):
+    """{str(FINGLE_ID): hr_person.ID} — ใช้เติม PERSON_ID ให้แถวใหม่ (ไม่เจอ = ไม่อยู่ในผล ผู้เรียกต้องกักแถว)"""
+    ids = sorted({str(i).strip() for i in fingle_ids if str(i).strip()})
+    if not ids:
+        return {}
+    rows = _query(f"SELECT FINGLE_ID, ID FROM hr_person WHERE FINGLE_ID IN ({_in(ids)})", tuple(ids))
+    return {str(r['FINGLE_ID']).strip(): r['ID'] for r in rows}
+
+
+_TEMPLATE_COLS = ('HR_FULLNAME, HR_POSITION_NAME, HR_LEAVEL_NAME, HR_DEP_NAME, HR_DEP_SUB_NAME, HR_PERSON_TYPE_NAME')
+
+
+def get_latest_rows_by_person(person_ids):
+    """{PERSON_ID: แถวล่าสุดที่ตัวนำเข้าเดิมเขียน (เฉพาะคอลัมน์ HR_*)} ใช้เป็นต้นแบบคัดลอกให้แถวใหม่ ; คนที่ไม่มีแถวเดิมไม่อยู่ในผล
+    หนึ่ง query ต่อคน ใช้ดัชนี (PERSON_ID, SCAN_DATE_TIME) — ห้ามรวมเป็น subquery/EXISTS ซ้อน"""
+    out = {}
+    for pid in sorted({int(p) for p in person_ids if p is not None}):
+        rows = _query(f"SELECT {_TEMPLATE_COLS} FROM `{_tbl()}` WHERE PERSON_ID = %s AND CREATE_BY IS NULL "
+                      f"AND MACHIN_SCAN_ID IS NOT NULL ORDER BY SCAN_DATE_TIME DESC LIMIT 1", (pid,))
+        if rows:
+            out[pid] = rows[0]
+    return out
+
+
 def get_max_scan_id():
     """MAX(ID) หรือ None ถ้าต่อ DB ไม่ได้ (None ≠ 0: ห้ามใช้ 0 เป็นจุดเริ่มต้น)"""
     try:

@@ -70,10 +70,10 @@ def value_profile(rows, columns=CODE_COLUMNS):
     return out
 
 
-def compare_with_real(sample, sources, consts):
+def compare_with_real(sample, sources, consts, templates=None):
     """สร้างแถวด้วย plan.build_row จากแถวต้นทาง แล้วเทียบกับแถวจริงที่ตัวเดิมเขียน (sample) ทีละคอลัมน์
     template ของแต่ละแถว = แถวอื่นล่าสุดของคนเดียวกันใน sample (sample เรียง ID มากไปน้อย) ; PERSON_ID ใช้ของแถวจริง
-    คืนแต่จำนวนกับชื่อคอลัมน์ที่ไม่ตรง — ไม่มีค่า"""
+    templates = {PERSON_ID: แถวล่าสุดจากฐานข้อมูล} ถ้าให้มาจะใช้แทนการหาจาก sample ; คืนแต่จำนวนกับชื่อคอลัมน์ที่ไม่ตรง — ไม่มีค่า"""
     out = {'compared': 0, 'identical': 0, 'differing': {}, 'no_template': 0, 'source_missing': 0}
     for r in sample:
         seq = r.get('MACHIN_SCAN_ID')
@@ -83,7 +83,8 @@ def compare_with_real(sample, sources, consts):
         if src is None:
             out['source_missing'] += 1
             continue
-        template = next((o for o in sample if o is not r and o.get('PERSON_ID') == r.get('PERSON_ID')), None)
+        template = (templates or {}).get(r.get('PERSON_ID')) or next(
+            (o for o in sample if o is not r and o.get('PERSON_ID') == r.get('PERSON_ID')), None)
         built = plan.build_row(src, r.get('PERSON_ID'), template, consts)
         if built is None:
             out['no_template'] += 1

@@ -107,3 +107,11 @@ def test_comparison_skips_rows_the_scanner_no_longer_has_and_rows_without_a_sequ
     c = shadow.compare_with_real([real(10), real(11), {'ID': 1}], {10: source(10)}, {'COM_NAME': 'PC'})
     assert c['source_missing'] == 1 and c['compared'] == 1 and c['no_template'] == 0
     assert 'p' not in repr(c['differing'])
+
+
+def test_templates_from_the_database_replace_peers_in_the_sample():
+    sample = [real(13, person=8)]
+    tpl = {1008: {'HR_FULLNAME': 'n', 'HR_POSITION_NAME': 'p', 'HR_LEAVEL_NAME': None, 'HR_DEP_NAME': 'd', 'HR_DEP_SUB_NAME': 's',
+                  'HR_PERSON_TYPE_NAME': 't'}}
+    c = shadow.compare_with_real(sample, {13: source(13, person=8)}, {'COM_NAME': 'PC'}, tpl)
+    assert c['no_template'] == 0 and c['identical'] == 1

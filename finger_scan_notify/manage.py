@@ -262,6 +262,7 @@ def cmd_shadow_report(args):
         sample = hosoffice.get_fill_sample()
         seqs = sorted({int(x['MACHIN_SCAN_ID']) for x in sample if x.get('MACHIN_SCAN_ID') is not None})
         sources = tigersoft.get_rows(seqs) if seqs else {}
+        templates = hosoffice.get_latest_rows_by_person({x.get('PERSON_ID') for x in sample})
     except (hosoffice.HosofficeUnavailable, tigersoft.TigerUnavailable) as e:
         print(f'✗ อ่านไม่สำเร็จ: {e}')
         return 1
@@ -282,7 +283,7 @@ def cmd_shadow_report(args):
     for col, vals in shadow.value_profile(sample).items():
         print(f'  {col}: ' + (f'ค่าต่างกัน {vals["__distinct__"]} ค่า (ไม่แสดง)' if '__distinct__' in vals else ', '.join(f'{k}={v}' for k, v in vals.items())))
     com = max({x.get('COM_NAME') for x in sample} or {None}, key=lambda v: sum(1 for x in sample if x.get('COM_NAME') == v))
-    c = shadow.compare_with_real(sample, sources, {'COM_NAME': com})
+    c = shadow.compare_with_real(sample, sources, {'COM_NAME': com}, templates)
     print(f'\nเทียบแถวที่ importer ใหม่จะสร้างกับแถวจริงของตัวเดิม: เทียบได้ {c["compared"]} · เหมือนทุกคอลัมน์ {c["identical"]} · '
           f'ไม่มีแถวอื่นของคนเดียวกันให้คัดลอก HR_* {c["no_template"]} · เครื่องสแกนไม่มีเลขนั้น {c["source_missing"]}')
     print('  คอลัมน์ที่ไม่ตรง:', ', '.join(f'{k}={v}' for k, v in c['differing'].items()) or '-')
