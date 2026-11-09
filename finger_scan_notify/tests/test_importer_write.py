@@ -391,3 +391,16 @@ def test_insert_ignores_any_column_outside_the_whitelist(fake_my):
     hosoffice.insert_scan_rows([row], 'W')
     sql = fake_my['conn'].log[0][1]
     assert 'EVIL' not in sql and 'DROP' not in sql and ' ID,' not in sql
+
+
+def test_a_seqs_import_records_the_exact_list_in_the_audit(admin_client, wr):
+    wr['rows'] = [fresh(s) for s in range(201, 211)]
+    admin_client.post('/api/importer/manual-import', json={'seqs': [201, 205, 207], 'expect': 3})
+    d = admin_client.get('/api/importer/status').get_json()['audit'][0]['detail']
+    assert d['seqs'] == [201, 205, 207] and d['written'] == 3                    # ไม่ใช่แค่ช่วง 201–207
+
+
+def test_non_numeric_input_gets_a_neutral_message_not_the_raw_python_error(admin_client, wr):
+    m = admin_client.get('/api/importer/manual-preview?seqs=a,b').get_json()['message']
+    assert m == 'ระบุเลขเป็นตัวเลข' and 'invalid literal' not in m
+    assert 'เกิน' in admin_client.get('/api/importer/manual-preview?from=1&to=100000').get_json()['message']      # ข้อความตรวจอินพุตของเราแสดงตามจริง

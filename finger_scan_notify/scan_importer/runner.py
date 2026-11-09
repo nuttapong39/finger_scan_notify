@@ -25,6 +25,10 @@ class ReleaseRefused(RuntimeError):
     """ปล่อยแถวที่กักไม่ได้ (โหมดไม่ใช่ write / ตัวอย่างล้าสมัย)"""
 
 
+class ManualInputError(ValueError):
+    """อินพุตของการนำเข้า/ค้นหาตามเลขไม่ถูกต้อง (ช่วงใหญ่เกิน, สแกนเก่าเกิน, จำนวนวันนอกช่วง) — ข้อความแสดงให้ผู้ใช้ได้"""
+
+
 def _consts():
     return {'COM_NAME': (settings.current.importer_write or {}).get('com_name')}
 
@@ -202,18 +206,18 @@ def manual_plan(lo=None, hi=None, now=None, seqs=None):
     if seqs is not None:
         wanted = sorted({int(x) for x in seqs})
         if not wanted or len(wanted) > MANUAL_MAX:
-            raise ValueError(f'ระบุเลขได้ 1–{MANUAL_MAX} เลขต่อครั้ง')
+            raise ManualInputError(f'ระบุเลขได้ 1–{MANUAL_MAX} เลขต่อครั้ง')
         lo, hi = wanted[0], wanted[-1]
     else:
         if hi < lo or hi - lo + 1 > MANUAL_MAX:
-            raise ValueError(f'ช่วงเลขต้องไม่เกิน {MANUAL_MAX} เลขต่อครั้ง และ from ต้องไม่มากกว่า to')
+            raise ManualInputError(f'ช่วงเลขต้องไม่เกิน {MANUAL_MAX} เลขต่อครั้ง และ from ต้องไม่มากกว่า to')
         wanted = range(lo, hi + 1)
     rows = list(tigersoft.get_rows(wanted).values())
     times = [t for t in (plan.row_time(r) for r in rows) if t]
     existing = set()
     if times:
         if min(times) < now - MANUAL_MAX_AGE:
-            raise ValueError(f'มีสแกนเก่ากว่า {MANUAL_MAX_AGE.days} วัน — ตรวจแถวซ้ำแบบอัตโนมัติไม่ได้ ให้ผู้ดูแลตรวจเอง')
+            raise ManualInputError(f'มีสแกนเก่ากว่า {MANUAL_MAX_AGE.days} วัน — ตรวจแถวซ้ำแบบอัตโนมัติไม่ได้ ให้ผู้ดูแลตรวจเอง')
         existing = hosoffice.get_existing_keys(min(times) - EXISTING_LOOKBACK)
     return _assess(rows, existing, len(wanted), lo, hi)
 
@@ -241,13 +245,13 @@ def find_missing(days, now=None):
     ValueError = days นอกช่วง ; TigerUnavailable / HosofficeUnavailable = ต่อฐานข้อมูลไม่ได้"""
     now = now or datetime.now()
     if not 1 <= days <= FIND_MAX_DAYS:
-        raise ValueError(f'ค้นหาย้อนหลังได้ 1–{FIND_MAX_DAYS} วัน')
+        raise ManualInputError(f'ค้นหาย้อนหลังได้ 1–{FIND_MAX_DAYS} วัน')
     start = now - timedelta(days=days)
     rows = tigersoft.get_rows_between(start, now + timedelta(minutes=1), FIND_LIMIT)
     existing = hosoffice.get_existing_keys(start - EXISTING_LOOKBACK) if rows else set()
     absent = [r for r in rows if plan.row_key(r) not in existing]
-    recent = [r for r in absent if (plan.row_time(r) or start) > now - RECENT]
-    missing = [r for r in absent if r not in recent]
+    recent = {r['seq'] for r in absent if (plan.row_time(r) or start) > now - RECENT}
+    missing = [r for r in absent if r['seq'] not in recent]
     out = {'scanned': len(rows), 'scan_capped': len(rows) >= FIND_LIMIT, 'too_recent': len(recent), 'missing': len(missing),
            'will_write': 0, 'unwritable': 0, 'seqs': [], 'seqs_capped': False, 'rows': [], 'rows_truncated': False}
     if missing:
@@ -270,6 +274,7 @@ def manual_import(lo, hi, expect, who, now=None, seqs=None):
     n = hosoffice.insert_scan_rows(mp['built'], plan.MANUAL_WRITER)
     p = mp['plan']
     database.mark_importer_released([(r['machine'], r['seq']) for r in p['insert'] + p['duplicate']], now.timestamp())
-    database.add_importer_audit(who, 'manual-import', {'from': lo if seqs is None else min(seqs), 'to': hi if seqs is None else max(seqs), 'written': n, 'already_present': len(p['duplicate']),
+    database.add_importer_audit(who, 'manual-import', {'from': lo if seqs is None else min(seqs), 'to': hi if seqs is None else max(seqs),
+                                                       **({'seqs': sorted(seqs)} if seqs is not None else {}), 'written': n, 'already_present': len(p['duplicate']),
                                                        'unreleasable': len(p['unreleasable']) + len(mp['unbuildable'])}, now.timestamp())
     return n

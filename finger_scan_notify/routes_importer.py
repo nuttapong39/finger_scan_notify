@@ -1,5 +1,6 @@
-"""API ของ Scan importer บนหน้า Watch: สถานะสด, ตั้งจุดเริ่มต้น, ดูตัวอย่างการปล่อยแถวที่กัก (dry-run)
-ไม่ส่งชื่อหรือรหัสบุคคลออกไปเลย — มีแต่เลข จำนวน และวันที่ ; ยังไม่มีปุ่มเขียนจริง (โหมดเขียนยังไม่เปิด)"""
+"""API ของ Scan importer บนหน้า Watch: สถานะสด, ตั้งจุดเริ่มต้น, ดูตัวอย่างการปล่อยแถวที่กัก, นำเข้าตามเลขจากเครื่องสแกน, ค้นหาที่ยังไม่เข้า hosoffice
+สถานะและตัวอย่างการปล่อยแถวที่กักส่งแต่เลข จำนวน และวันที่ ; เฉพาะตัวอย่างนำเข้าตามเลข/ผลค้นหา (manual-preview, missing) ส่ง PERSON_ID และชื่อต่อแถว
+เพื่อให้ผู้ดูแลที่ล็อกอินตรวจว่าเป็นสแกนของใครก่อนยืนยัน (ไม่บันทึกลง log/SQLite) ; ปุ่มเขียนจริงใช้ได้เฉพาะโหมด write"""
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request, session
@@ -106,8 +107,7 @@ def _int_list(text):
     return [int(x) for x in text.split(',') if x.strip()]
 
 
-def _bad_numbers(e):
-    return str(e) if ('เลข' in str(e) or 'วัน' in str(e)) else 'ระบุเลขเป็นตัวเลข'
+NOT_NUMBERS = 'ระบุเลขเป็นตัวเลข'
 
 
 @bp.route('/api/importer/manual-preview')
@@ -119,8 +119,10 @@ def api_manual_preview():
             mp = runner.manual_plan(int(request.args['from']), int(request.args['to']))
     except KeyError:
         return jsonify({'success': False, 'message': 'ระบุช่วงเลข from และ to หรือรายการ seqs เป็นตัวเลข'}), 400
-    except ValueError as e:
-        return jsonify({'success': False, 'message': _bad_numbers(e)}), 400
+    except runner.ManualInputError as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
+    except ValueError:
+        return jsonify({'success': False, 'message': NOT_NUMBERS}), 400
     except (tigersoft.TigerUnavailable, hosoffice.HosofficeUnavailable) as e:
         return jsonify({'success': False, 'message': f'อ่านฐานข้อมูลไม่ได้ ({e})'}), 503
     p = mp['plan']
@@ -136,9 +138,12 @@ def api_manual_preview():
 def api_missing():
     try:
         days = int(request.args.get('days', '1'))
-        r = runner.find_missing(days)
     except ValueError:
         return jsonify({'success': False, 'message': f'ระบุจำนวนวันย้อนหลังเป็นตัวเลข 1–{runner.FIND_MAX_DAYS}'}), 400
+    try:
+        r = runner.find_missing(days)
+    except runner.ManualInputError as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
     except (tigersoft.TigerUnavailable, hosoffice.HosofficeUnavailable) as e:
         return jsonify({'success': False, 'message': f'อ่านฐานข้อมูลไม่ได้ ({e})'}), 503
     return jsonify({'success': True, 'days': days, **r})
@@ -155,8 +160,10 @@ def api_manual_import():
             n = runner.manual_import(int(body['from']), int(body['to']), expect, session.get('admin'))
     except (KeyError, TypeError):
         return jsonify({'success': False, 'message': 'ต้องระบุ (from, to) หรือ seqs และ expect (จำนวนที่เห็นในตัวอย่าง) เป็นตัวเลข'}), 400
-    except ValueError as e:
-        return jsonify({'success': False, 'message': _bad_numbers(e)}), 400
+    except runner.ManualInputError as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
+    except ValueError:
+        return jsonify({'success': False, 'message': NOT_NUMBERS}), 400
     except runner.ReleaseRefused as e:
         return jsonify({'success': False, 'message': str(e)}), 409
     except (tigersoft.TigerUnavailable, hosoffice.HosofficeUnavailable, hosoffice.HosofficeWriteError) as e:
