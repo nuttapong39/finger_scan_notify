@@ -58,6 +58,8 @@ def wr(tmp_db, monkeypatch):
     monkeypatch.setattr(hosoffice, 'get_person_ids', lambda ids: {str(i): st['people'][str(i)] for i in ids if str(i) in st['people']})
     monkeypatch.setattr(hosoffice, 'get_latest_rows_by_person', lambda ids: {i: st['templates'][i] for i in ids if i in st['templates']})
     monkeypatch.setattr(hosoffice, 'insert_scan_rows', insert)
+    st['profiles'] = {}
+    monkeypatch.setattr(hosoffice, 'get_hr_profiles', lambda ids: {i: st['profiles'][i] for i in ids if i in st['profiles']})
     return st
 
 
@@ -78,6 +80,25 @@ def test_a_person_without_an_earlier_row_is_held_not_guessed(wr):
     r = runner.run_round(NOW)
     assert r['inserted'] == 1 and r['held'] == 2
     assert {(h['seq'], h['reason']) for h in database.get_importer_held()} == {(102, 'no_template'), (103, 'no_person')}
+
+
+def test_a_new_employee_without_earlier_rows_is_written_from_the_hr_data(wr):
+    HR_NEW = dict(TPL, HR_FULLNAME='ใหม่   พนักงาน')
+    wr['profiles'] = {1008: HR_NEW}                           # คน 8: ไม่มีแถวเก่า แต่มีข้อมูล HR ครบ
+    database.save_importer_state(checkpoint=100)
+    wr['rows'] = [src(101, person=8), src(102, person=7)]
+    r = runner.run_round(NOW)
+    assert r['inserted'] == 2 and r['held'] == 0
+    by_seq = {x['MACHIN_SCAN_ID']: x for x in wr['inserted'][0][1]}
+    assert by_seq[101]['HR_FULLNAME'] == 'ใหม่   พนักงาน' and by_seq[102]['HR_FULLNAME'] == 'n'     # คนเดิมยังใช้ต้นแบบจากแถวเก่า
+
+
+def test_an_earlier_row_wins_over_the_hr_data(wr):
+    wr['profiles'] = {1007: dict(TPL, HR_FULLNAME='จาก HR')}
+    database.save_importer_state(checkpoint=100)
+    wr['rows'] = [src(101)]
+    runner.run_round(NOW)
+    assert wr['inserted'][0][1][0]['HR_FULLNAME'] == 'n'
 
 
 def test_a_failed_insert_keeps_the_checkpoint_and_the_next_round_retries(wr):

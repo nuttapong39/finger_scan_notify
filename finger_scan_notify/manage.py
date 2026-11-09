@@ -290,7 +290,26 @@ def cmd_shadow_report(args):
     return 0
 
 
-COMMANDS = {'shadow-report': cmd_shadow_report, 'tiger-check': cmd_tiger_check, 'init-admin': cmd_init_admin, 'reset-admin': cmd_reset_admin, 'backup': cmd_backup,
+def cmd_hr_compare(args):
+    """เทียบ HR_* ที่ประกอบจากข้อมูล HR กับแถวจริงของตัวเดิม (400 แถวล่าสุด) — อ่านอย่างเดียว ไม่แสดงชื่อ/ค่า แสดงแต่จำนวนและชื่อคอลัมน์ที่ไม่ตรง"""
+    from scan_importer import shadow
+    try:
+        sample = hosoffice.get_fill_sample()
+        profiles = hosoffice.get_hr_profiles({x.get('PERSON_ID') for x in sample})
+    except hosoffice.HosofficeUnavailable as e:
+        print(f'✗ อ่านไม่สำเร็จ: {e}')
+        return 1
+    if profiles is None:
+        print('✗ บัญชีอ่านยังไม่มีสิทธิ์ตาราง/คอลัมน์ HR ที่ต้องใช้ (ดู docs/runbooks/db-accounts.md ส่วน D)')
+        return 1
+    c = shadow.compare_hr_profiles(sample, profiles)
+    print(f'เทียบ HR_* จากข้อมูล HR กับแถวจริงของตัวเดิม: เทียบได้ {c["compared"]} จาก {len(sample)} แถว · เหมือนทุกคอลัมน์ {c["identical"]} · '
+          f'ข้อมูล HR ไม่ครบ/ไม่พบคน {c["no_profile"]}')
+    print('  คอลัมน์ที่ไม่ตรง:', ', '.join(f'{k}={v}' for k, v in c['differing'].items()) or '-')
+    return 0
+
+
+COMMANDS = {'shadow-report': cmd_shadow_report, 'hr-compare': cmd_hr_compare, 'tiger-check': cmd_tiger_check, 'init-admin': cmd_init_admin, 'reset-admin': cmd_reset_admin, 'backup': cmd_backup,
             'can-restart': cmd_can_restart, 'reset-checkpoint': cmd_reset_checkpoint, 'check': cmd_check}
 
 

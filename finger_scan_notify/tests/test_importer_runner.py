@@ -48,6 +48,8 @@ def imp(tmp_db, monkeypatch):
     monkeypatch.setattr(hosoffice, 'get_person_ids', lambda ids: {str(i): st['people'][str(i)] for i in ids if str(i) in st['people']})
     monkeypatch.setattr(hosoffice, 'get_latest_rows_by_person', lambda ids: {i: st['templates'][i] for i in ids if i in st['templates']})
     monkeypatch.setattr(hosoffice, 'insert_scan_rows', insert)
+    st['profiles'] = {}
+    monkeypatch.setattr(hosoffice, 'get_hr_profiles', lambda ids: {i: st['profiles'][i] for i in ids if i in st['profiles']})
     monkeypatch.setattr(tigersoft, 'get_rows_after', rows_after)
     monkeypatch.setattr(tigersoft, 'get_latest_seq', lambda: st['latest'])
     monkeypatch.setattr(hosoffice, 'get_existing_keys', existing)

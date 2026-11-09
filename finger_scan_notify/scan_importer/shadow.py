@@ -96,3 +96,21 @@ def compare_with_real(sample, sources, consts, templates=None):
         for c in diff:
             out['differing'][c] = out['differing'].get(c, 0) + 1
     return out
+
+
+def compare_hr_profiles(sample, profiles):
+    """เทียบ HR_* ที่ประกอบจากข้อมูล HR (hosoffice.get_hr_profiles) กับ HR_* จริงในแถวของตัวเดิม — คืนแต่จำนวนกับชื่อคอลัมน์ที่ไม่ตรง ไม่มีค่า
+    HR_LEAVEL_NAME ว่าง/None ถือว่าเท่ากัน"""
+    out = {'compared': 0, 'identical': 0, 'differing': {}, 'no_profile': 0}
+    for r in sample:
+        prof = profiles.get(r.get('PERSON_ID'))
+        if prof is None:
+            out['no_profile'] += 1
+            continue
+        out['compared'] += 1
+        diff = [c for c in plan.HR_COPIED if (prof.get(c) or '') != (r.get(c) or '')]
+        if not diff:
+            out['identical'] += 1
+        for c in diff:
+            out['differing'][c] = out['differing'].get(c, 0) + 1
+    return out

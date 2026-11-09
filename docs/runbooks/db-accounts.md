@@ -86,6 +86,30 @@ FLUSH PRIVILEGES;
 
 ---
 
+## D. MariaDB: สิทธิ์อ่านข้อมูล HR เพิ่ม (ให้ importer สร้างแถวของพนักงานใหม่ได้)
+
+ตัวเดิม (LZ-… และ SCAN-WATCH) เติม `HR_FULLNAME`, `HR_POSITION_NAME`, `HR_DEP_NAME`, `HR_DEP_SUB_NAME`, `HR_PERSON_TYPE_NAME`, `HR_LEAVEL_NAME` จากข้อมูล HR ตรง ๆ
+importer ตัวใหม่ทำเหมือนกัน แต่ใช้เฉพาะคนที่ **ยังไม่เคยมีแถวใน hosoffice** (พนักงานใหม่) ; คนเดิมยังคัดลอกจากแถวเก่า (ยืนยันแล้ว 397/400)
+
+**ให้สิทธิ์เฉพาะคอลัมน์ที่ใช้เท่านั้น** — `hr_person` มีรหัสผ่าน โทเคน LINE/Telegram เลขบัญชี เลขบัตรประชาชน และตาราง `hr_department*` มีโทเคน ห้ามให้ทั้งตาราง
+ผู้ดูแลรันเอง (แทน IP เหมือนส่วน A ; ทำซ้ำสำหรับ `<IP_dashboard-srv>`) :
+
+```sql
+GRANT SELECT (HR_PREFIX_ID, HR_POSITION_ID, HR_DEPARTMENT_ID, HR_DEPARTMENT_SUB_ID, HR_PERSON_TYPE_ID, HR_LEVEL_ID) ON hosoffice.hr_person TO 'scan_notify_ro'@'192.168.1.25';
+GRANT SELECT (HR_PREFIX_ID, HR_PREFIX_NAME)                                  ON hosoffice.hr_prefix         TO 'scan_notify_ro'@'192.168.1.25';
+GRANT SELECT (HR_POSITION_ID, HR_POSITION_NAME)                              ON hosoffice.hr_position       TO 'scan_notify_ro'@'192.168.1.25';
+GRANT SELECT (HR_LEVEL_ID, HR_LEVEL_NAME)                                    ON hosoffice.hr_level          TO 'scan_notify_ro'@'192.168.1.25';
+GRANT SELECT (HR_DEPARTMENT_ID, HR_DEPARTMENT_NAME)                          ON hosoffice.hr_department     TO 'scan_notify_ro'@'192.168.1.25';
+GRANT SELECT (HR_DEPARTMENT_SUB_ID, HR_DEPARTMENT_ID, HR_DEPARTMENT_SUB_NAME) ON hosoffice.hr_department_sub TO 'scan_notify_ro'@'192.168.1.25';
+GRANT SELECT (HR_PERSON_TYPE_ID, HR_PERSON_TYPE_NAME)                        ON hosoffice.hr_person_type    TO 'scan_notify_ro'@'192.168.1.25';
+FLUSH PRIVILEGES;
+```
+
+ตรวจ : `python manage.py hr-compare` (อ่านอย่างเดียว ไม่แสดงชื่อ) ต้องเหมือนตัวเดิมเกือบทุกแถวก่อนเปิด `write` ; ถ้ายังไม่ให้สิทธิ์ คำสั่งแจ้งว่าไม่มีสิทธิ์ และ importer ใช้ต้นแบบจากแถวเก่าอย่างเดียว (พนักงานใหม่ถูกกัก)
+ผลตรวจที่ทราบแล้ว (9 พ.ย. 2569) : `HR_FULLNAME` ของตัวเดิม = คำนำหน้า + ชื่อ + ช่องว่าง 3 ตัว + นามสกุล ตรงทั้ง 400 แถว
+
+---
+
 ## ตรวจสอบหลังสร้าง
 
 ```sql

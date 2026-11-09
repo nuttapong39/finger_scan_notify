@@ -116,3 +116,15 @@ def test_templates_from_the_database_replace_peers_in_the_sample():
                   'HR_PERSON_TYPE_NAME': 't'}}
     c = shadow.compare_with_real(sample, {13: source(13, person=8)}, {'COM_NAME': 'PC'}, tpl)
     assert c['no_template'] == 0 and c['identical'] == 1
+
+
+def test_hr_compare_counts_columns_that_differ_without_showing_values():
+    sample = [{'PERSON_ID': 1, 'HR_FULLNAME': 'a', 'HR_POSITION_NAME': 'p', 'HR_LEAVEL_NAME': '', 'HR_DEP_NAME': 'd', 'HR_DEP_SUB_NAME': 's',
+               'HR_PERSON_TYPE_NAME': 't'},
+              {'PERSON_ID': 2, 'HR_FULLNAME': 'b', 'HR_POSITION_NAME': 'p', 'HR_LEAVEL_NAME': None, 'HR_DEP_NAME': 'd', 'HR_DEP_SUB_NAME': 's',
+               'HR_PERSON_TYPE_NAME': 't'},
+              {'PERSON_ID': 3, 'HR_FULLNAME': 'c'}]
+    same = {'HR_FULLNAME': 'a', 'HR_POSITION_NAME': 'p', 'HR_LEAVEL_NAME': None, 'HR_DEP_NAME': 'd', 'HR_DEP_SUB_NAME': 's', 'HR_PERSON_TYPE_NAME': 't'}
+    profiles = {1: same, 2: dict(same, HR_FULLNAME='x', HR_DEP_NAME='y')}              # 1 ตรง (ว่าง = None), 2 ต่าง 2 คอลัมน์, 3 ไม่มีข้อมูล HR
+    r = shadow.compare_hr_profiles(sample, profiles)
+    assert r == {'compared': 2, 'identical': 1, 'no_profile': 1, 'differing': {'HR_FULLNAME': 1, 'HR_DEP_NAME': 1}}

@@ -33,11 +33,15 @@ def build_rows(src_rows):
     ฐานข้อมูลล่ม = raise (ผู้เรียกจบรอบโดยไม่ขยับจุด)"""
     pids = hosoffice.get_person_ids([r.get('person') for r in src_rows if r.get('person') is not None])
     pid_of = {r['seq']: pids.get(str(r.get('person')).strip()) for r in src_rows}
-    templates = hosoffice.get_latest_rows_by_person([v for v in pid_of.values() if v is not None])
+    known = [v for v in pid_of.values() if v is not None]
+    templates = hosoffice.get_latest_rows_by_person(known)
+    # คนที่ไม่เคยมีแถว (พนักงานใหม่) → สร้าง HR_* จากข้อมูล HR ตรง ๆ เหมือนตัวเดิม ; แถวเก่าของคนเดิมยังเป็นต้นแบบที่ใช้ก่อน (ยืนยันแล้ว 397/400)
+    missing = [p for p in known if p not in templates]
+    profiles = (hosoffice.get_hr_profiles(missing) or {}) if missing else {}
     built, unbuildable = [], []
     for r in src_rows:
         pid = pid_of[r['seq']]
-        row = plan.build_row(r, pid, templates.get(pid), _consts())
+        row = plan.build_row(r, pid, templates.get(pid) or profiles.get(pid), _consts())
         if row is not None:
             built.append(row)
         else:

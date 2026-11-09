@@ -259,6 +259,44 @@ def get_latest_rows_by_person(person_ids):
     return out
 
 
+HR_NAME_SEPARATOR = '   '        # ตัวเดิมคั่นชื่อกับนามสกุลด้วยช่องว่าง 3 ตัว (ยืนยันแล้วกับ 400/400 แถวล่าสุด)
+_NO_ACCESS_ERRNOS = (1044, 1142, 1143, 1054, 1146)       # ไม่มีสิทธิ์ตาราง/คอลัมน์ หรือไม่พบคอลัมน์/ตาราง
+
+
+def get_hr_profiles(person_ids):
+    """{PERSON_ID: {HR_FULLNAME, HR_POSITION_NAME, HR_LEAVEL_NAME, HR_DEP_NAME, HR_DEP_SUB_NAME, HR_PERSON_TYPE_NAME}} สร้างจากข้อมูล HR ตรง ๆ
+    (เหมือนที่ตัวเดิมทำ) ใช้กับคนที่ยังไม่เคยมีแถวใน hosoffice (พนักงานใหม่) ; ข้อมูลไม่ครบ (ไม่มีชื่อ/ตำแหน่ง/กลุ่มงาน/งาน/ประเภท) = ไม่อยู่ในผล
+    คืน None ถ้าบัญชีอ่านยังไม่มีสิทธิ์ (หรือไม่พบตาราง/คอลัมน์) — ผู้เรียกใช้ต้นแบบจากแถวเก่าอย่างเดียวต่อไป ; ต่อฐานข้อมูลไม่ได้ = raise"""
+    pids = sorted({int(p) for p in person_ids if p is not None})
+    if not pids:
+        return {}
+    try:
+        rows = _query(
+            "SELECT p.ID AS pid, pf.HR_PREFIX_NAME AS prefix, p.HR_FNAME AS fname, p.HR_LNAME AS lname, "
+            "pos.HR_POSITION_NAME AS position, lv.HR_LEVEL_NAME AS level, d.HR_DEPARTMENT_NAME AS dep, "
+            "s.HR_DEPARTMENT_SUB_NAME AS sub, t.HR_PERSON_TYPE_NAME AS ptype "
+            "FROM hr_person p "
+            "LEFT JOIN hr_prefix pf ON pf.HR_PREFIX_ID = p.HR_PREFIX_ID "
+            "LEFT JOIN hr_position pos ON pos.HR_POSITION_ID = p.HR_POSITION_ID "
+            "LEFT JOIN hr_level lv ON lv.HR_LEVEL_ID = p.HR_LEVEL_ID "
+            "LEFT JOIN hr_department d ON d.HR_DEPARTMENT_ID = p.HR_DEPARTMENT_ID "
+            "LEFT JOIN hr_department_sub s ON s.HR_DEPARTMENT_SUB_ID = p.HR_DEPARTMENT_SUB_ID AND s.HR_DEPARTMENT_ID = p.HR_DEPARTMENT_ID "
+            "LEFT JOIN hr_person_type t ON t.HR_PERSON_TYPE_ID = p.HR_PERSON_TYPE_ID "
+            f"WHERE p.ID IN ({_in(pids)})", tuple(pids))
+    except HosofficeUnavailable as e:
+        if getattr(e.__cause__, 'errno', None) in _NO_ACCESS_ERRNOS:
+            return None
+        raise
+    out = {}
+    for r in rows:
+        fname, lname = (r['fname'] or '').strip(), (r['lname'] or '').strip()
+        profile = {'HR_FULLNAME': f"{r['prefix'] or ''}{fname}{HR_NAME_SEPARATOR}{lname}", 'HR_POSITION_NAME': r['position'],
+                   'HR_LEAVEL_NAME': r['level'] or '', 'HR_DEP_NAME': r['dep'], 'HR_DEP_SUB_NAME': r['sub'], 'HR_PERSON_TYPE_NAME': r['ptype']}
+        if fname and lname and all(profile[c] for c in ('HR_POSITION_NAME', 'HR_DEP_NAME', 'HR_DEP_SUB_NAME', 'HR_PERSON_TYPE_NAME')):
+            out[r['pid']] = profile
+    return out
+
+
 def get_max_scan_id():
     """MAX(ID) หรือ None ถ้าต่อ DB ไม่ได้ (None ≠ 0: ห้ามใช้ 0 เป็นจุดเริ่มต้น)"""
     try:
