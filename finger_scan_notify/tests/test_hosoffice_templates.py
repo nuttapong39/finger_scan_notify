@@ -71,3 +71,10 @@ def test_a_connection_failure_is_still_an_error(monkeypatch):
     import pytest
     with pytest.raises(hosoffice.HosofficeUnavailable):
         hosoffice.get_hr_profiles([265])
+
+
+def test_unstripped_names_and_the_sub_department_join_follow_the_old_importer(monkeypatch):
+    calls = fake(monkeypatch, lambda s, p: [dict(HR, fname='สมชาย ', lname=' ใจดี')])
+    assert hosoffice.get_hr_profiles([265])[265]['HR_FULLNAME'] == 'นายสมชาย' + ' ' * 5 + 'ใจดี'            # ไม่ตัดช่องว่างในชื่อ ตัวเดิมต่อสตริงตามที่เก็บ
+    sql = calls[0][0]
+    assert 'hr_department_sub s ON s.HR_DEPARTMENT_SUB_ID = p.HR_DEPARTMENT_SUB_ID ' in sql and 's.HR_DEPARTMENT_ID = p.' not in sql

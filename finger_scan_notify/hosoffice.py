@@ -280,7 +280,8 @@ def get_hr_profiles(person_ids):
             "LEFT JOIN hr_position pos ON pos.HR_POSITION_ID = p.HR_POSITION_ID "
             "LEFT JOIN hr_level lv ON lv.HR_LEVEL_ID = p.HR_LEVEL_ID "
             "LEFT JOIN hr_department d ON d.HR_DEPARTMENT_ID = p.HR_DEPARTMENT_ID "
-            "LEFT JOIN hr_department_sub s ON s.HR_DEPARTMENT_SUB_ID = p.HR_DEPARTMENT_SUB_ID AND s.HR_DEPARTMENT_ID = p.HR_DEPARTMENT_ID "
+            # จับคู่งานย่อยด้วยรหัสงานย่อยอย่างเดียว (รหัสไม่ซ้ำข้ามกลุ่มงาน — ตรวจแล้ว) : บางคนสังกัดงานย่อยต่างกลุ่มงานกับตัวเอง และตัวเดิมก็จับคู่แบบนี้
+            "LEFT JOIN hr_department_sub s ON s.HR_DEPARTMENT_SUB_ID = p.HR_DEPARTMENT_SUB_ID "
             "LEFT JOIN hr_person_type t ON t.HR_PERSON_TYPE_ID = p.HR_PERSON_TYPE_ID "
             f"WHERE p.ID IN ({_in(pids)})", tuple(pids))
     except HosofficeUnavailable as e:
@@ -289,10 +290,10 @@ def get_hr_profiles(person_ids):
         raise
     out = {}
     for r in rows:
-        fname, lname = (r['fname'] or '').strip(), (r['lname'] or '').strip()
+        fname, lname = r['fname'] or '', r['lname'] or ''           # ไม่ตัดช่องว่าง : ตัวเดิมต่อสตริงตามที่เก็บใน hr_person
         profile = {'HR_FULLNAME': f"{r['prefix'] or ''}{fname}{HR_NAME_SEPARATOR}{lname}", 'HR_POSITION_NAME': r['position'],
                    'HR_LEAVEL_NAME': r['level'] or '', 'HR_DEP_NAME': r['dep'], 'HR_DEP_SUB_NAME': r['sub'], 'HR_PERSON_TYPE_NAME': r['ptype']}
-        if fname and lname and all(profile[c] for c in ('HR_POSITION_NAME', 'HR_DEP_NAME', 'HR_DEP_SUB_NAME', 'HR_PERSON_TYPE_NAME')):
+        if fname.strip() and lname.strip() and all(profile[c] for c in ('HR_POSITION_NAME', 'HR_DEP_NAME', 'HR_DEP_SUB_NAME', 'HR_PERSON_TYPE_NAME')):
             out[r['pid']] = profile
     return out
 
