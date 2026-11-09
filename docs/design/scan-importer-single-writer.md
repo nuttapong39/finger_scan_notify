@@ -107,3 +107,8 @@ hosoffice มีแถวซ้ำเลขเดียวกัน 240 เล�
 ### B1 ดึงต้นแบบต่อคนจากฐานข้อมูล (9 พ.ย. 2569)
 - `hosoffice.get_person_ids` (FINGLE_ID → `hr_person.ID`) และ `get_latest_rows_by_person` (แถวล่าสุดของตัวเดิมต่อ `PERSON_ID`, หนึ่ง query ต่อคน ใช้ดัชนี `(PERSON_ID, SCAN_DATE_TIME)`) ; `ID` ของ `fingle_scan` เป็น auto_increment → ไม่ต้องใส่
 - ผลจริง: **เทียบได้ 400 · เหมือนทุกคอลัมน์ 397** · 3 แถวที่เหลือต่างแค่ `SCAN_TYPE` (แถว IN/OUT จากมือถือ) · ไม่มีแถวที่ขาดต้นแบบ
+
+### หน้า Watch + โหมดเงาแบบสด (9 พ.ย. 2569)
+- ตัดสินใจกับผู้ใช้: ควบคุมผ่านปุ่มบนหน้า `/watch` (ไม่ใช้คำสั่ง `manage.py release`) · รับให้เว็บถือบัญชีเขียน `scan_importer_rw` (SELECT, INSERT บน `fingle_scan` เท่านั้น) เมื่อถึงขั้นเขียนจริง · การสลับโหมดเงา→เขียนเป็นค่า `SCAN_IMPORTER_MODE` ใน `.env` + restart ไม่ทำเป็นปุ่ม
+- ทำแล้ว (ยังไม่เขียน hosoffice): `scan_importer/runner.py` (รอบทุก 15 วินาที โหมด `off|shadow`) · ตาราง SQLite `importer_state`, `importer_held` · `routes_importer.py` : `GET /api/importer/status`, `POST /api/importer/baseline`, `GET /api/importer/release-preview` · การ์ด "Scan importer" บนหน้า Watch อัปเดตทุก 5 วินาที · ปุ่ม "ยืนยันปล่อย" ปิดอยู่จนกว่าจะมีโหมดเขียน
+- ยังไม่มี: ตัวเขียนจริง (บัญชี C, transaction, ป้าย `SCAN-IMPORTER`/`-RELEASED`), ปุ่มปล่อยจริง + บันทึกว่าใครกด, โหมด `write` ใน settings

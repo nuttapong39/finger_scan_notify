@@ -230,6 +230,15 @@ def init_db():
         first_seen REAL NOT NULL, closed_at REAL, alerted_at REAL, recovery_notified INTEGER NOT NULL DEFAULT 0,
         UNIQUE(kind, seq)
     )""")
+    # ── Scan importer ตัวใหม่ (scan_importer/runner.py) : สถานะรอบล่าสุด + แถวที่กัก ──
+    c.execute("""CREATE TABLE IF NOT EXISTS importer_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1), checkpoint INTEGER, last_round_at REAL, last_error TEXT, last_counts TEXT
+    )""")
+    c.execute("INSERT OR IGNORE INTO importer_state (id) VALUES (1)")
+    c.execute("""CREATE TABLE IF NOT EXISTS importer_held (
+        machine INTEGER NOT NULL, seq INTEGER NOT NULL, row_time TEXT, device_time TEXT, person TEXT, mode TEXT,
+        reason TEXT NOT NULL, held_at REAL NOT NULL, released_at REAL, PRIMARY KEY (machine, seq)
+    )""")
     # มีค่าเชื่อมต่อ hosoffice ใน .env แล้ว → ไม่เก็บรหัส MySQL ซ้ำใน SQLite (ไฟล์นี้ถูกคัดลอก/สำรองไปที่อื่น)
     if settings.current.hosoffice:
         c.execute("UPDATE db_config SET password='' WHERE COALESCE(password,'') <> ''")
@@ -639,3 +648,56 @@ def get_running_backfill_job():
     row = conn.execute("SELECT * FROM backfill_jobs WHERE status='running' ORDER BY id DESC LIMIT 1").fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+# ── Scan importer ตัวใหม่ ─────────────────────────────────────
+def get_importer_state():
+    conn = get_sqlite_conn()
+    row = dict(conn.execute("SELECT * FROM importer_state WHERE id=1").fetchone())
+    conn.close()
+    row['last_counts'] = json.loads(row['last_counts']) if row.get('last_counts') else {}
+    return row
+
+
+def save_importer_state(**fields):
+    bad = set(fields) - {'checkpoint', 'last_round_at', 'last_error', 'last_counts'}
+    if bad:
+        raise ValueError(f'ไม่มีฟิลด์: {sorted(bad)}')
+    if 'last_counts' in fields:
+        fields['last_counts'] = json.dumps(fields['last_counts'])
+    if not fields:
+        return
+    conn = get_sqlite_conn()
+    conn.execute(f"UPDATE importer_state SET {', '.join(k + '=?' for k in fields)} WHERE id=1", tuple(fields.values()))
+    conn.commit(); conn.close()
+
+
+def add_importer_held(rows, now_ts):
+    """rows = [{'src': แถวต้นทาง, 'reason': ...}] — แถวที่กักแล้ว (เครื่อง, เลข) เดิมไม่ถูกเขียนทับ"""
+    conn = get_sqlite_conn()
+    for r in rows:
+        s = r['src']
+        conn.execute("INSERT OR IGNORE INTO importer_held (machine, seq, row_time, device_time, person, mode, reason, held_at) "
+                     "VALUES (?,?,?,?,?,?,?,?)",
+                     (s.get('machine'), s['seq'], s['time'].isoformat() if s.get('time') else None,
+                      s['device_time'].isoformat() if s.get('device_time') else None,
+                      None if s.get('person') is None else str(s['person']), s.get('mode'), r['reason'], now_ts))
+    conn.commit(); conn.close()
+
+
+def get_importer_held(seq_from=None, seq_to=None, open_only=True):
+    """แถวที่กัก (รูปแบบเดียวกับแถวต้นทางของ plan) เรียงตามเลข"""
+    where, args = [], []
+    if open_only:
+        where.append('released_at IS NULL')
+    if seq_from is not None:
+        where.append('seq >= ?'); args.append(int(seq_from))
+    if seq_to is not None:
+        where.append('seq <= ?'); args.append(int(seq_to))
+    conn = get_sqlite_conn()
+    rows = conn.execute(f"SELECT * FROM importer_held {'WHERE ' + ' AND '.join(where) if where else ''} ORDER BY seq", tuple(args)).fetchall()
+    conn.close()
+    from datetime import datetime
+    iso = lambda v: datetime.fromisoformat(v) if v else None   # noqa: E731
+    return [{'seq': r['seq'], 'machine': r['machine'], 'person': r['person'], 'mode': r['mode'], 'reason': r['reason'],
+             'time': iso(r['row_time']), 'device_time': iso(r['device_time'])} for r in rows]

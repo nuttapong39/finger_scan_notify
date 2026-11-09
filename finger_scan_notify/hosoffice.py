@@ -186,6 +186,13 @@ def get_names_by_fingle_ids(fingle_ids):
     return {str(r['FINGLE_ID']).strip(): (r['name'] or '').strip() for r in rows}
 
 
+def get_existing_keys(since):
+    """{(MACHIN_ID, MACHIN_SCAN_ID)} ของแถวที่มีเลขเครื่องและเวลาสแกน >= since — ใช้ดัชนีเวลา (ห้ามค้นตามเลขตรง ๆ : ไม่มีดัชนี)"""
+    rows = _query(f"SELECT MACHIN_ID AS m, MACHIN_SCAN_ID AS s FROM `{_tbl()}` WHERE SCAN_DATE_TIME >= %s AND MACHIN_SCAN_ID IS NOT NULL",
+                  (since,))
+    return {(r['m'], int(r['s'])) for r in rows}
+
+
 def get_person_ids(fingle_ids):
     """{str(FINGLE_ID): hr_person.ID} — ใช้เติม PERSON_ID ให้แถวใหม่ (ไม่เจอ = ไม่อยู่ในผล ผู้เรียกต้องกักแถว)"""
     ids = sorted({str(i).strip() for i in fingle_ids if str(i).strip()})

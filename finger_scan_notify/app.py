@@ -23,18 +23,21 @@ import icons
 import reminders
 import scan_types
 import scanwatch
+from scan_importer import runner as scan_importer_runner
 import settings
 from cards import THAI_DAYS, build_flex_message, build_backfill_card, build_reminder_card, build_line_message
 from delivery import deliver_scan, deliver_reminder, scan_skip_reason
 from flex_theme import DEFAULT_THEME, validate_theme
 from notifier import LINE_NOTIFY_URL
 from routes_phase2 import bp as phase2_bp
+from routes_importer import bp as importer_bp
 from routes_watch import bp as watch_bp
 
 app = Flask(__name__)
 auth.install(app, settings.current.secret_key)     # ทุก route ต้องล็อกอิน (ยกเว้น /login)
 app.register_blueprint(phase2_bp)
 app.register_blueprint(watch_bp)
+app.register_blueprint(importer_bp)
 app.jinja_env.globals.update(icon=icons.icon, sprite_url=icons.sprite_url, static_url=icons.static_url)   # ไอคอน Lucide / Simple Icons ใน template
 app.jinja_env.filters['initial'] = icons.initial
 
@@ -622,6 +625,9 @@ def startup():
         print("  เตือนยังไม่สแกน: ตรวจทุก 60 วินาที")
         scanwatch.start()
         print("  ตรวจ Lost scan / การนำเข้าหยุด: ทุก 60 วินาที")
+        scan_importer_runner.start()
+        if s.importer_mode != 'off':
+            print(f"  Scan importer ตัวใหม่: โหมด {s.importer_mode} (เทียบอย่างเดียว ไม่เขียน hosoffice)")
     else:
         print("  เครื่องนี้ไม่ใช่เครื่องหลัก (MONITOR_AUTOSTART ไม่ได้ตั้ง) — Monitor และการเตือนไม่เริ่มเอง")
     if auth.get_account() is None:

@@ -34,6 +34,7 @@ class Settings:
     listen_host: str
     listen_port: int
     tiger: dict | None = field(default=None, repr=False)      # มีรหัสผ่าน — ห้ามโผล่ใน repr/log
+    importer_mode: str = 'off'          # Scan importer ตัวใหม่: off | shadow (เทียบอย่างเดียว) — โหมดเขียนยังไม่เปิดให้ตั้ง
 
     @property
     def is_production(self):
@@ -92,12 +93,16 @@ def load(env):
                  'person_column': env.get('TIGER_PERSON_COLUMN', 'PersonCardID').strip(),
                  'machine_column': env.get('TIGER_MACHINE_COLUMN', 'MachID').strip()}
 
+    importer_mode = (env.get('SCAN_IMPORTER_MODE') or 'off').strip().lower()
+    if importer_mode not in ('off', 'shadow'):
+        raise SettingsError(f'SCAN_IMPORTER_MODE ต้องเป็น off หรือ shadow (ได้ "{importer_mode}") — โหมดเขียนยังไม่เปิดให้ใช้')
     return Settings(
         app_env=app_env, secret_key=secret, hosoffice=hosoffice,
         monitor_autostart=env.get('MONITOR_AUTOSTART', '').strip().lower() in TRUE_VALUES,
         listen_host=env.get('LISTEN_HOST', '').strip() or '127.0.0.1',
         listen_port=_port(env, 'LISTEN_PORT', 5050),
         tiger=tiger,
+        importer_mode=importer_mode,
     )
 
 

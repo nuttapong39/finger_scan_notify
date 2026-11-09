@@ -24,6 +24,32 @@
 </div>
 <div class="alert alert-error" id="s-error" style="display:none;"></div>
 
+<div class="card" style="margin-bottom:20px;" id="imp-card">
+  <div class="card-header">
+    <div class="card-title">{{ icon('database') }} Scan importer (ตัวนำเข้าใหม่)</div>
+    <div class="w-row"><span id="imp-mode" class="badge badge-muted">-</span><span id="imp-live" class="form-hint">อัปเดตทุก 5 วินาที</span></div>
+  </div>
+  <div class="alert alert-error" id="imp-error" style="display:none;"></div>
+  <div class="w-grid" style="margin-bottom:14px;">
+    <div class="stat-card"><div class="w-kv">จุดล่าสุดที่อ่านถึง<b id="imp-cp">-</b></div></div>
+    <div class="stat-card"><div class="w-kv">รอบล่าสุด<b id="imp-round" style="font-size:14px;">-</b></div></div>
+    <div class="stat-card"><div class="w-kv">จะเขียน (รอบล่าสุด)<b id="imp-insert">-</b></div></div>
+    <div class="stat-card"><div class="w-kv">กักรอบล่าสุด<b id="imp-heldnow">-</b></div></div>
+    <div class="stat-card"><div class="w-kv">กักค้างทั้งหมด<b id="imp-held">-</b></div></div>
+  </div>
+  <div class="form-hint" id="imp-held-detail" style="margin-bottom:12px;"></div>
+  <div class="w-row" style="margin-bottom:10px;">
+    <button class="btn btn-outline btn-sm" id="imp-baseline" style="display:none;">{{ icon('map-pin') }} ตั้งจุดเริ่มต้น (ใช้เลขล่าสุดของเครื่องสแกน)</button>
+    <label class="form-label" for="imp-from" style="margin:0;">ช่วงเลขที่กัก</label>
+    <input id="imp-from" class="form-control" type="number" min="0" placeholder="จากเลข" style="width:130px; padding:5px 10px;">
+    <input id="imp-to" class="form-control" type="number" min="0" placeholder="ถึงเลข" style="width:130px; padding:5px 10px;">
+    <button class="btn btn-outline btn-sm" id="imp-preview">{{ icon('search') }} ดูตัวอย่างการปล่อย (ยังไม่เขียน)</button>
+    <button class="btn btn-primary btn-sm" id="imp-release" disabled>{{ icon('send') }} ยืนยันปล่อย</button>
+  </div>
+  <div class="form-hint" id="imp-write-note"></div>
+  <div id="imp-preview-box" class="form-hint" style="margin-top:8px;"></div>
+</div>
+
 <div class="card" style="margin-bottom:20px;">
   <div class="card-header">
     <div class="card-title">{{ icon('triangle-alert') }} เหตุการณ์</div>
@@ -140,6 +166,57 @@
     }).catch(() => { box.textContent = 'เชื่อมต่อไม่ได้'; });
   });
   load(); setInterval(load, 30000);
+
+  // ── Scan importer (อัปเดตสดทุก 5 วินาที ; แสดงเฉพาะเลข/จำนวน/วันที่) ──
+  const REASON = { old: 'เก่ากว่า 24 ชม.', future: 'เวลาล้ำอนาคต', no_time: 'ไม่มีเวลาสแกน', flood: 'ท่วมเกินเพดานต่อรอบ' };
+  const MODE = { off: 'ปิดอยู่', shadow: 'โหมดเงา (เทียบอย่างเดียว ไม่เขียน)' };
+  let impWrite = { can: false, reason: '' };
+  function renderImporter(d) {
+    $('imp-mode').textContent = MODE[d.mode] || d.mode;
+    $('imp-mode').className = 'badge ' + (d.mode === 'off' ? 'badge-muted' : 'badge-success');
+    $('imp-cp').textContent = d.checkpoint == null ? '-' : d.checkpoint;
+    $('imp-round').textContent = d.last_round_at || '-';
+    const c = d.counts || {};
+    $('imp-insert').textContent = c.would_insert == null ? '-' : c.would_insert;
+    $('imp-heldnow').textContent = c.held == null ? '-' : c.held + (c.flood ? ' (ท่วม)' : '');
+    $('imp-held').textContent = d.held.count;
+    $('imp-held-detail').textContent = d.held.count
+      ? `เลข ${d.held.seq_min}–${d.held.seq_max} · เวลาสแกน ${d.held.oldest} ถึง ${d.held.newest} · สาเหตุ: ` +
+        Object.entries(d.held.reasons).map(([k, v]) => `${REASON[k] || k} ${v}`).join(', ')
+      : 'ไม่มีแถวที่กัก';
+    $('imp-baseline').style.display = d.needs_baseline ? '' : 'none';
+    const err = $('imp-error');
+    const msg = d.needs_baseline ? 'ยังไม่มีจุดเริ่มต้น — importer จะไม่อ่านหรือเขียนอะไรจนกว่าจะตั้งจุดเริ่มต้น' : d.last_error;
+    err.style.display = msg ? 'flex' : 'none';
+    if (msg) setIconText(err, 'triangle-alert', msg);
+    impWrite = { can: d.can_write, reason: d.write_blocked_reason };
+    $('imp-release').disabled = !impWrite.can;
+    $('imp-write-note').textContent = impWrite.can ? '' : impWrite.reason;
+  }
+  function loadImporter() {
+    fetch('/api/importer/status').then(r => r.json()).then(d => { if (d.success) renderImporter(d); }).catch(() => {});
+  }
+  $('imp-baseline').addEventListener('click', () => {
+    if (!confirm('ตั้งจุดเริ่มต้นที่เลขล่าสุดของเครื่องสแกน? importer จะนำเข้าเฉพาะเลขที่ใหม่กว่านี้')) return;
+    fetch('/api/importer/baseline', { method: 'POST' }).then(r => r.json()).then(d => {
+      $('imp-preview-box').textContent = d.message; loadImporter();
+    });
+  });
+  $('imp-preview').addEventListener('click', () => {
+    const box = $('imp-preview-box');
+    const lo = $('imp-from').value, hi = $('imp-to').value;
+    if (lo === '' || hi === '') { box.textContent = 'ระบุช่วงเลข จาก–ถึง'; return; }
+    fetch(`/api/importer/release-preview?from=${encodeURIComponent(lo)}&to=${encodeURIComponent(hi)}`)
+      .then(r => r.json()).then(d => {
+        if (!d.success) { box.textContent = d.message; return; }
+        const days = Object.entries(d.per_day).map(([k, v]) => `${k}=${v}`).join(' · ') || '-';
+        box.replaceChildren(
+          el('div', `ตัวอย่าง (ยังไม่ได้เขียนอะไร) — กักอยู่ในช่วง ${d.held_in_range} · จะเขียน ${d.will_write} · มีอยู่แล้ว ${d.already_present}` +
+                    ` · ปล่อยไม่ได้ ${d.unreleasable.length}${d.unreleasable.length ? ' (เลข ' + d.unreleasable.join(', ') + ')' : ''}`),
+          el('div', `เวลาสแกน ${d.oldest || '-'} ถึง ${d.newest || '-'} · ต่อวัน: ${days} · ป้ายผู้เขียน ${d.writer}`));
+      }).catch(() => { box.textContent = 'เชื่อมต่อไม่ได้'; });
+  });
+  loadImporter(); setInterval(loadImporter, 5000);
 })();
 </script>
 {% endblock %}
