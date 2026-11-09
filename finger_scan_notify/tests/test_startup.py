@@ -52,3 +52,30 @@ def test_production_trusts_one_proxy_hop(monkeypatch):
 def test_development_does_not_trust_forwarded_for():
     """เครื่องพัฒนาไม่มี nginx ข้างหน้า — เชื่อ X-Forwarded-For = ใครก็ปลอม IP หลบการล็อกได้"""
     assert not hasattr(serve.wsgi_app(), 'x_for')
+
+
+# ── Scan importer เริ่มตามโหมดของมันเอง ไม่ผูกกับ MONITOR_AUTOSTART (Server ต้องรันโหมดเงาโดยยังไม่ให้ Monitor ส่งแจ้งเตือนซ้ำกับเครื่องเดิม) ──
+from scan_importer import runner as importer_runner
+
+SHADOW = {**PROD, 'SCAN_IMPORTER_MODE': 'shadow', 'TIGER_HOST': 'h', 'TIGER_DATABASE': 'd', 'TIGER_USER': 'u', 'TIGER_PASSWORD': 'pw'}
+
+
+@pytest.fixture
+def importer_thread(monkeypatch):
+    monkeypatch.setattr(importer_runner, 'loop', lambda: None)               # ไม่ให้ thread ทำรอบจริง
+    importer_runner.status['running'] = False
+    yield importer_runner.status
+    importer_runner.status['running'] = False
+
+
+def test_the_importer_starts_on_a_non_primary_machine_when_its_mode_is_on(calls, importer_thread, monkeypatch):
+    monkeypatch.setattr(settings, 'current', settings.load(SHADOW))             # ไม่มี MONITOR_AUTOSTART
+    app_module.startup()
+    assert importer_thread['running'] is True
+    assert calls == []                                                          # Monitor/เตือน/Lost scan ไม่เริ่ม
+
+
+def test_the_importer_stays_off_when_its_mode_is_off_even_on_the_primary_machine(calls, importer_thread, monkeypatch):
+    monkeypatch.setattr(settings, 'current', settings.load({**PROD, 'MONITOR_AUTOSTART': '1'}))
+    app_module.startup()
+    assert importer_thread['running'] is False

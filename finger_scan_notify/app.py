@@ -625,11 +625,14 @@ def startup():
         print("  เตือนยังไม่สแกน: ตรวจทุก 60 วินาที")
         scanwatch.start()
         print("  ตรวจ Lost scan / การนำเข้าหยุด: ทุก 60 วินาที")
-        scan_importer_runner.start()
-        if s.importer_mode != 'off':
-            print(f"  Scan importer ตัวใหม่: โหมด {s.importer_mode} (เทียบอย่างเดียว ไม่เขียน hosoffice)")
     else:
         print("  เครื่องนี้ไม่ใช่เครื่องหลัก (MONITOR_AUTOSTART ไม่ได้ตั้ง) — Monitor และการเตือนไม่เริ่มเอง")
+    # Scan importer เริ่มตามโหมดของมันเอง (off = ไม่ทำอะไร) ไม่ผูกกับ MONITOR_AUTOSTART : Server รันโหมดเงาได้ก่อนวัน cutover
+    # โดย Monitor ยังไม่ส่งแจ้งเตือน (ไม่งั้นซ้ำกับเครื่องเดิม) ; ห้ามตั้ง write มากกว่าหนึ่งเครื่อง (ผู้เขียนต้องมีคนเดียว)
+    scan_importer_runner.start()
+    if s.importer_mode != 'off':
+        print("  Scan importer ตัวใหม่: " + ("โหมดเงา (เทียบอย่างเดียว ไม่เขียน hosoffice)" if s.importer_mode == 'shadow'
+                                            else "โหมดเขียน (เขียน hosoffice จริงด้วยบัญชีเขียนแยก)"))
     if auth.get_account() is None:
         print("  ยังไม่มีบัญชี admin — รัน: python manage.py init-admin")
     print("=" * 55, flush=True)

@@ -148,6 +148,19 @@ def get_rows_after(seq, limit=3000):
     return [_normalise(r) for r in rows]
 
 
+def get_rows_between(start, end, limit=5000):
+    """แถวที่ start <= TimeInout < end เรียงตามเลข (สูงสุด limit แถว) — ใช้ค้นหาสแกนที่ยังไม่เข้า hosoffice ; รูปแบบเดียวกับ get_rows"""
+    t = settings.current.tiger
+    wanted = [SEQ_COL, TIME_COL, COMMIT_COL, MODE_COL, t['person_column'], t['machine_column']]
+    for name in wanted:
+        if name and not _IDENT.match(name):
+            raise TigerUnavailable(f'ชื่อคอลัมน์ไม่ถูกต้อง: {name!r}')
+    cols = ', '.join(dict.fromkeys(n for n in wanted if n))
+    rows = _select(f'SELECT TOP {int(limit)} {cols} FROM {TABLE} WHERE {TIME_COL} >= %s AND {TIME_COL} < %s ORDER BY {SEQ_COL}',
+                   (start, end))
+    return [_normalise(r) for r in rows]
+
+
 def get_rows(seqs):
     """{seq: {'seq','time','person','machine'}} ของเลขที่เครื่องมีอยู่จริง (เลขที่เครื่องไม่เคยออกให้ไม่อยู่ในผล)"""
     seqs = sorted({int(s) for s in seqs})

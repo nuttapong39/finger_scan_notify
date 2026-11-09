@@ -102,23 +102,25 @@ def api_release():
     return jsonify({'success': True, 'written': n, 'message': f'ปล่อยแล้ว {n} แถว'})
 
 
-def _range_args():
-    try:
-        lo, hi = int(request.args['from']), int(request.args['to'])
-    except (KeyError, ValueError):
-        return None, None, (jsonify({'success': False, 'message': 'ระบุช่วงเลข from และ to เป็นตัวเลข'}), 400)
-    return lo, hi, None
+def _int_list(text):
+    return [int(x) for x in text.split(',') if x.strip()]
+
+
+def _bad_numbers(e):
+    return str(e) if ('เลข' in str(e) or 'วัน' in str(e)) else 'ระบุเลขเป็นตัวเลข'
 
 
 @bp.route('/api/importer/manual-preview')
 def api_manual_preview():
-    lo, hi, err = _range_args()
-    if err:
-        return err
     try:
-        mp = runner.manual_plan(lo, hi)
+        if 'seqs' in request.args:
+            mp = runner.manual_plan(seqs=_int_list(request.args['seqs']))
+        else:
+            mp = runner.manual_plan(int(request.args['from']), int(request.args['to']))
+    except KeyError:
+        return jsonify({'success': False, 'message': 'ระบุช่วงเลข from และ to หรือรายการ seqs เป็นตัวเลข'}), 400
     except ValueError as e:
-        return jsonify({'success': False, 'message': str(e)}), 400
+        return jsonify({'success': False, 'message': _bad_numbers(e)}), 400
     except (tigersoft.TigerUnavailable, hosoffice.HosofficeUnavailable) as e:
         return jsonify({'success': False, 'message': f'อ่านฐานข้อมูลไม่ได้ ({e})'}), 503
     p = mp['plan']
@@ -126,20 +128,35 @@ def api_manual_preview():
     bad = sorted({r['seq'] for r in p['unreleasable']} | {r['seq'] for r, _ in mp['unbuildable']})
     return jsonify({'success': True, 'dry_run': True, 'on_scanner': mp['on_scanner'], 'not_on_scanner': mp['not_on_scanner'],
                     'will_write': len(mp['built']), 'already_present': len(p['duplicate']), 'unreleasable': bad[:50],
-                    'oldest': _minute(s['oldest']), 'newest': _minute(s['newest']), 'per_day': s['per_day'], 'writer': plan.MANUAL_WRITER})
+                    'oldest': _minute(s['oldest']), 'newest': _minute(s['newest']), 'per_day': s['per_day'], 'writer': plan.MANUAL_WRITER,
+                    'rows': mp['rows'], 'rows_truncated': mp['rows_truncated']})
+
+
+@bp.route('/api/importer/missing')
+def api_missing():
+    try:
+        days = int(request.args.get('days', '1'))
+        r = runner.find_missing(days)
+    except ValueError:
+        return jsonify({'success': False, 'message': f'ระบุจำนวนวันย้อนหลังเป็นตัวเลข 1–{runner.FIND_MAX_DAYS}'}), 400
+    except (tigersoft.TigerUnavailable, hosoffice.HosofficeUnavailable) as e:
+        return jsonify({'success': False, 'message': f'อ่านฐานข้อมูลไม่ได้ ({e})'}), 503
+    return jsonify({'success': True, 'days': days, **r})
 
 
 @bp.route('/api/importer/manual-import', methods=['POST'])
 def api_manual_import():
     body = request.get_json(silent=True) or {}
     try:
-        lo, hi, expect = int(body['from']), int(body['to']), int(body['expect'])
-    except (KeyError, TypeError, ValueError):
-        return jsonify({'success': False, 'message': 'ต้องระบุ from, to และ expect (จำนวนที่เห็นในตัวอย่าง) เป็นตัวเลข'}), 400
-    try:
-        n = runner.manual_import(lo, hi, expect, session.get('admin'))
+        expect = int(body['expect'])
+        if 'seqs' in body:
+            n = runner.manual_import(None, None, expect, session.get('admin'), seqs=[int(x) for x in body['seqs']])
+        else:
+            n = runner.manual_import(int(body['from']), int(body['to']), expect, session.get('admin'))
+    except (KeyError, TypeError):
+        return jsonify({'success': False, 'message': 'ต้องระบุ (from, to) หรือ seqs และ expect (จำนวนที่เห็นในตัวอย่าง) เป็นตัวเลข'}), 400
     except ValueError as e:
-        return jsonify({'success': False, 'message': str(e)}), 400
+        return jsonify({'success': False, 'message': _bad_numbers(e)}), 400
     except runner.ReleaseRefused as e:
         return jsonify({'success': False, 'message': str(e)}), 409
     except (tigersoft.TigerUnavailable, hosoffice.HosofficeUnavailable, hosoffice.HosofficeWriteError) as e:

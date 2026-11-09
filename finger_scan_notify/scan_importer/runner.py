@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 
 import database
 import hosoffice
+import scan_types
 import settings
 import tigersoft
 
@@ -170,36 +171,105 @@ MANUAL_MAX = 200                         # ช่วงเลขต่อคร�
 MANUAL_MAX_AGE = timedelta(days=60)      # เก่ากว่านี้ตรวจแถวซ้ำด้วยดัชนีเวลาไม่ได้ผลน่าเชื่อถือ → ไม่ทำ
 
 
-def manual_plan(lo, hi, now=None):
-    """แผนนำเข้าเลข lo–hi จากเครื่องสแกน (อ่านอย่างเดียว) — ใช้กับสแกนที่ตกหล่นก่อนจุดเริ่มต้น ; ข้ามแถวที่ hosoffice มีกุญแจนั้นแล้ว
-    ValueError = ช่วงเลขไม่ถูกต้อง/ใหญ่เกิน/เก่าเกิน ; TigerUnavailable / HosofficeUnavailable = ต่อฐานข้อมูลไม่ได้"""
+PREVIEW_ROWS = 50                        # แถวที่แสดงรายละเอียดบนหน้าจอต่อครั้ง
+
+
+def describe_rows(src_rows, status_of):
+    """รายละเอียดต่อแถวให้ผู้ดูแลตรวจก่อนยืนยัน: เลข เครื่อง เวลาถึงวินาที ทิศทาง เจ้าของ (PERSON_ID + ชื่อจาก hr_person) สถานะ
+    status_of = {seq: (status, reason)} · ชื่ออ่านจาก hr_person แสดงบนหน้าที่ล็อกอินเท่านั้น ไม่บันทึกลง log/SQLite"""
+    rows = sorted(src_rows, key=lambda r: r['seq'])
+    shown = rows[:PREVIEW_ROWS]
+    cards = [r['person'] for r in shown if r.get('person') is not None]
+    pids, names = hosoffice.get_person_ids(cards), hosoffice.get_names_by_fingle_ids(cards)
+    out = []
+    for r in shown:
+        card = None if r.get('person') is None else str(r['person']).strip()
+        status, reason = status_of.get(r['seq'], ('unwritable', 'no_time'))
+        t = plan.row_time(r)
+        item = {'seq': r['seq'], 'machine': r.get('machine'), 'time': t.strftime('%Y-%m-%d %H:%M:%S') if t else None,
+                'direction': scan_types.label(r.get('mode')) or 'ไม่ทราบ', 'person_id': pids.get(card), 'name': names.get(card),
+                'status': status}
+        if reason:
+            item['reason'] = reason
+        out.append(item)
+    return out, len(rows) > PREVIEW_ROWS
+
+
+def manual_plan(lo=None, hi=None, now=None, seqs=None):
+    """แผนนำเข้าจากเครื่องสแกน (อ่านอย่างเดียว) — ระบุเป็นช่วงเลข lo–hi หรือรายการ seqs ; ใช้กับสแกนที่ตกหล่นก่อนจุดเริ่มต้น ข้ามแถวที่ hosoffice มีกุญแจนั้นแล้ว
+    ValueError = เลขไม่ถูกต้อง/มากเกิน/เก่าเกิน ; TigerUnavailable / HosofficeUnavailable = ต่อฐานข้อมูลไม่ได้"""
     now = now or datetime.now()
-    if hi < lo or hi - lo + 1 > MANUAL_MAX:
-        raise ValueError(f'ช่วงเลขต้องไม่เกิน {MANUAL_MAX} เลขต่อครั้ง และ from ต้องไม่มากกว่า to')
-    rows = list(tigersoft.get_rows(range(lo, hi + 1)).values())
+    if seqs is not None:
+        wanted = sorted({int(x) for x in seqs})
+        if not wanted or len(wanted) > MANUAL_MAX:
+            raise ValueError(f'ระบุเลขได้ 1–{MANUAL_MAX} เลขต่อครั้ง')
+        lo, hi = wanted[0], wanted[-1]
+    else:
+        if hi < lo or hi - lo + 1 > MANUAL_MAX:
+            raise ValueError(f'ช่วงเลขต้องไม่เกิน {MANUAL_MAX} เลขต่อครั้ง และ from ต้องไม่มากกว่า to')
+        wanted = range(lo, hi + 1)
+    rows = list(tigersoft.get_rows(wanted).values())
     times = [t for t in (plan.row_time(r) for r in rows) if t]
     existing = set()
     if times:
         if min(times) < now - MANUAL_MAX_AGE:
             raise ValueError(f'มีสแกนเก่ากว่า {MANUAL_MAX_AGE.days} วัน — ตรวจแถวซ้ำแบบอัตโนมัติไม่ได้ ให้ผู้ดูแลตรวจเอง')
         existing = hosoffice.get_existing_keys(min(times) - EXISTING_LOOKBACK)
+    return _assess(rows, existing, len(wanted), lo, hi)
+
+
+def _assess(rows, existing, wanted_n, lo, hi):
+    """ประเมินแถวจากเครื่องสแกนว่าเขียนได้/มีแล้ว/เขียนไม่ได้ (อ่านอย่างเดียว) + รายละเอียดต่อแถว — ใช้ร่วมกันระหว่างนำเข้าตามเลขกับค้นหาที่ขาด"""
     p = plan.plan_release(rows, existing, lo, hi)
     built, unbuildable = build_rows(p['insert']) if p['insert'] else ([], [])
-    return {'plan': p, 'built': built, 'unbuildable': unbuildable, 'on_scanner': len(rows), 'not_on_scanner': hi - lo + 1 - len(rows)}
+    status_of = {r['seq']: ('present', None) for r in p['duplicate']}
+    status_of.update({b['MACHIN_SCAN_ID']: ('will_write', None) for b in built})
+    status_of.update({r['seq']: ('unwritable', why) for r, why in unbuildable})
+    details, truncated = describe_rows(rows, status_of)
+    return {'plan': p, 'built': built, 'unbuildable': unbuildable, 'on_scanner': len(rows), 'not_on_scanner': wanted_n - len(rows),
+            'rows': details, 'rows_truncated': truncated}
 
 
-def manual_import(lo, hi, expect, who, now=None):
+FIND_MAX_DAYS = 7                        # ค้นหาที่ขาดย้อนหลังได้ไม่เกินนี้
+FIND_LIMIT = 5000                        # แถวจากเครื่องสแกนต่อครั้ง
+RECENT = timedelta(minutes=15)           # สแกนที่ใหม่กว่านี้ยังไม่นับว่าขาด: ตัวนำเข้าเดิม/SCAN-WATCH เขียนช้ากว่าเครื่องสแกนเล็กน้อย
+
+
+def find_missing(days, now=None):
+    """ค้นหาสแกนที่เครื่องสแกนมีแต่ hosoffice ไม่มีกุญแจ (เครื่อง, เลข) ย้อนหลัง days วัน (อ่านอย่างเดียว ใช้ได้ทุกโหมด)
+    สแกนใหม่กว่า 15 นาทีถูกกันออก (too_recent) ; คืนรายละเอียดต่อแถว + seqs ที่เขียนได้ (สูงสุด 200 เลข ส่งต่อให้นำเข้าได้)
+    ValueError = days นอกช่วง ; TigerUnavailable / HosofficeUnavailable = ต่อฐานข้อมูลไม่ได้"""
+    now = now or datetime.now()
+    if not 1 <= days <= FIND_MAX_DAYS:
+        raise ValueError(f'ค้นหาย้อนหลังได้ 1–{FIND_MAX_DAYS} วัน')
+    start = now - timedelta(days=days)
+    rows = tigersoft.get_rows_between(start, now + timedelta(minutes=1), FIND_LIMIT)
+    existing = hosoffice.get_existing_keys(start - EXISTING_LOOKBACK) if rows else set()
+    absent = [r for r in rows if plan.row_key(r) not in existing]
+    recent = [r for r in absent if (plan.row_time(r) or start) > now - RECENT]
+    missing = [r for r in absent if r not in recent]
+    out = {'scanned': len(rows), 'scan_capped': len(rows) >= FIND_LIMIT, 'too_recent': len(recent), 'missing': len(missing),
+           'will_write': 0, 'unwritable': 0, 'seqs': [], 'seqs_capped': False, 'rows': [], 'rows_truncated': False}
+    if missing:
+        a = _assess(missing, set(), len(missing), min(r['seq'] for r in missing), max(r['seq'] for r in missing))
+        writable = sorted(b['MACHIN_SCAN_ID'] for b in a['built'])
+        out.update(will_write=len(a['built']), unwritable=len(missing) - len(a['built']), seqs=writable[:MANUAL_MAX],
+                   seqs_capped=len(writable) > MANUAL_MAX, rows=a['rows'], rows_truncated=a['rows_truncated'])
+    return out
+
+
+def manual_import(lo, hi, expect, who, now=None, seqs=None):
     """เขียนสแกนเลข lo–hi จากเครื่องสแกนลง hosoffice (ป้าย SCAN-IMPORTER-MANUAL) — เฉพาะโหมด write และเมื่อจำนวนตรงกับตัวอย่างที่ผู้ใช้เห็น ;
     คืนจำนวนที่เขียน ; บันทึก audit ว่าใครสั่ง ; แถวที่เคยกักไว้ในช่วงนี้ถูกทำเครื่องหมายว่าจัดการแล้ว"""
     now = now or datetime.now()
     if settings.current.importer_mode != 'write':
         raise ReleaseRefused('นำเข้าได้เฉพาะโหมด write (SCAN_IMPORTER_MODE=write)')
-    mp = manual_plan(lo, hi, now)
+    mp = manual_plan(lo, hi, now, seqs=seqs)
     if len(mp['built']) != int(expect):
         raise ReleaseRefused(f'จำนวนที่จะเขียนเปลี่ยนไปแล้ว (ตัวอย่างเห็น {expect}, ตอนนี้ {len(mp["built"])}) — ดูตัวอย่างใหม่อีกครั้ง')
     n = hosoffice.insert_scan_rows(mp['built'], plan.MANUAL_WRITER)
     p = mp['plan']
     database.mark_importer_released([(r['machine'], r['seq']) for r in p['insert'] + p['duplicate']], now.timestamp())
-    database.add_importer_audit(who, 'manual-import', {'from': lo, 'to': hi, 'written': n, 'already_present': len(p['duplicate']),
+    database.add_importer_audit(who, 'manual-import', {'from': lo if seqs is None else min(seqs), 'to': hi if seqs is None else max(seqs), 'written': n, 'already_present': len(p['duplicate']),
                                                        'unreleasable': len(p['unreleasable']) + len(mp['unbuildable'])}, now.timestamp())
     return n

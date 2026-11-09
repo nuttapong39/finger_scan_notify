@@ -105,6 +105,8 @@ def tiger(monkeypatch):
             return [{'COLUMN_NAME': 'ID_TimeInout', 'DATA_TYPE': 'int'}, {'COLUMN_NAME': 'TimeInout', 'DATA_TYPE': 'datetime'},
                     {'COLUMN_NAME': 'CommitTime', 'DATA_TYPE': 'datetime'},
                     {'COLUMN_NAME': 'FingerID', 'DATA_TYPE': 'int'}, {'COLUMN_NAME': 'MachineNo', 'DATA_TYPE': 'int'}]
+        if '>=' in sql:                       # get_rows_between (ช่วงเวลา)
+            return st.get('between', [])
         if sql.upper().count('TOP 1') and 'ORDER BY' in sql.upper():
             return [st['rows'][max(st['rows'])]] if st['rows'] else []
         return [st['rows'][p] for p in params if p in st['rows']]
@@ -459,3 +461,17 @@ def test_the_scanner_in_out_mode_is_carried_as_text_and_requested_in_the_select(
     got = tigersoft.get_rows([10])
     assert got[10]['mode'] == '4'
     assert 'InOutMode' in tiger['conn'].executed[0][0]
+
+
+def test_rows_between_two_times_are_read_in_sequence_order_with_bound_parameters(tiger):
+    tiger['between'] = [src_row(5, at(8, 1)), src_row(6, at(8, 2), person=9, machine=3)]
+    got = tigersoft.get_rows_between(at(0), at(23), limit=10)
+    assert [r['seq'] for r in got] == [5, 6] and got[1]['person'] == 9 and got[1]['machine'] == 3
+    sql, params = tiger['conn'].executed[0]
+    assert params == (at(0), at(23)) and 'TOP 10' in sql and 'ORDER BY ID_TimeInout' in sql and '2026' not in sql
+    assert sql.lstrip().upper().startswith('SELECT') and tiger['conn'].closed
+
+
+def test_rows_between_never_sends_anything_but_a_select(tiger):
+    tigersoft.get_rows_between(at(0), at(23))
+    assert all(sql.lstrip().upper().startswith('SELECT') for sql, _ in tiger['conn'].executed)

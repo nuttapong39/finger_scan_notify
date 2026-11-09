@@ -87,6 +87,9 @@ sudo -u scannotify nano .env
 | `HOSOFFICE_HOST` / `PORT` / `USER` / `PASSWORD` / `DATABASE` | `192.168.1.250` / `3306` / บัญชี / รหัส / `hosoffice` |
 | `MONITOR_AUTOSTART` | **`0`** จนถึงขั้นย้ายเครื่อง (หัวข้อ 9) |
 | `LISTEN_HOST` / `LISTEN_PORT` | `127.0.0.1` / `5050` (เข้าได้ผ่าน nginx เท่านั้น) |
+| `TIGER_HOST` / `PORT` / `DATABASE` / `USER` / `PASSWORD` | เครื่องสแกน `192.168.1.77` / `1433` / `TigerWebServerPlus` / บัญชีอ่านอย่างเดียว (runbook ส่วน B) / รหัส — ต้องเปิด firewall ที่ .77 ให้ IP ของเครื่องนี้ ; ตรวจด้วย `manage.py tiger-check` |
+| `SCAN_IMPORTER_MODE` | **`shadow`** ระหว่างติดตั้ง (เทียบอย่างเดียว ไม่เขียน) → `write` ตอนสลับผู้เขียน (หัวข้อ 9.1) · **เริ่มเองตามโหมดนี้ ไม่ผูกกับ `MONITOR_AUTOSTART`** |
+| `HOSOFFICE_WRITE_USER` / `HOSOFFICE_WRITE_PASSWORD` / `SCAN_IMPORTER_COM_NAME` | **ใส่ตอน cutover เท่านั้น** (บัญชี `scan_importer_rw` runbook ส่วน C, ชื่อ `SCAN-IMPORTER`) |
 
 **บัญชี hosoffice:** ตอนนี้ใช้ `root` ไปก่อน (ตกลงไว้ใน Q5) ด่านกันเขียนคือ READ ONLY session ในโค้ด
 ควรขอผู้ดูแล hosoffice สร้างบัญชีที่มีแค่ `SELECT` บน `fingle_scan`, `leave_holiday`, `leave_register`, `fingle_scan_notify_mute` แล้วเปลี่ยนใน `.env` (ไม่ต้อง deploy แค่ `sudo systemctl restart scan-notify`)
@@ -187,6 +190,22 @@ sudo -u scannotify ./deploy/smoke_after_deploy.sh http://scan-notify.ckhospital.
    ถ้ามีคนกดเริ่ม Monitor บน Windows หน้าเว็บจะขึ้นแถบแดงเตือนว่าไม่ใช่เครื่องหลัก
 8. **ตรวจว่า Monitor ทำงาน:** `smoke_after_deploy.sh` ตรวจได้แค่ว่าบริการ active (Monitor อยู่หลังล็อกอิน และผู้ใช้ระบบ `scannotify` อ่าน journal ไม่ได้)
    ดูเองด้วย `sudo journalctl -u scan-notify -n 20` หรือแถบ Monitor Status ใน sidebar หลังล็อกอิน
+
+## 9.1 สลับผู้เขียนเป็น Scan importer ตัวใหม่ (ทำหลังหัวข้อ 9 หรือก่อนก็ได้ — ไม่ผูกกัน)
+
+ตัวใหม่เป็น **ผู้เขียน `fingle_scan` คนเดียว** แทนตัวนำเข้าเดิม (`LZ-…`) และ SCAN-WATCH ของ HOSOffice (ออกแบบ: `docs/design/scan-importer-single-writer.md`)
+**ห้ามตั้ง `SCAN_IMPORTER_MODE=write` บนเครื่องมากกว่าหนึ่งเครื่อง** — เครื่อง Windows ต้องเป็น `off` หรือ `shadow`
+
+1. **โหมดเงาบน Server:** `SCAN_IMPORTER_MODE=shadow` + ใส่ `TIGER_*` → `manage.py tiger-check` ผ่าน → restart → เปิด `/watch` กด "ตั้งจุดเริ่มต้น" แล้วดูการ์ดจนตัวเลขนิ่ง
+   (importer เริ่มตามโหมดของมันเอง จึงรันเงาได้ทั้งที่ `MONITOR_AUTOSTART=0` — Monitor ยังไม่ส่งแจ้งเตือนซ้ำกับเครื่องเดิม)
+   ตรวจ `python manage.py hr-compare` และ `shadow-report` บน Server — ต้องเหมือนตัวเดิมเกือบทุกแถว ; ใช้ "ค้นหาที่ยังไม่เข้า hosoffice" ดูสแกนที่ขาดทั้งหมดก่อนสลับ
+2. **สิทธิ์ฐานข้อมูลสำหรับ IP ของ Server:** runbook `docs/runbooks/db-accounts.md` ส่วน A, B, D (อ่านอย่างเดียว) — ส่วน C (บัญชีเขียน) สร้างในขั้นที่ 4
+3. **ก่อนสลับ:** สำรองตาราง `fingle_scan` · ทำนอกช่วงเข้า-ออกงาน
+4. **สลับ (ช่วงสั้นที่สุด):** หยุดผู้เขียนเดิมทั้งสอง (ส่วนนำเข้าของ `LZ-…` และ SCAN-WATCH — ยืนยันว่าหน้า Watch ไม่มีเหตุการณ์ "ผู้เขียนที่ปิดแล้วกลับมาเขียน" ใหม่)
+   → ผู้ดูแลสร้างบัญชี `scan_importer_rw` (ส่วน C) → ใส่ `HOSOFFICE_WRITE_USER`, `HOSOFFICE_WRITE_PASSWORD`, `SCAN_IMPORTER_COM_NAME=SCAN-IMPORTER` ใน `.env` → `SCAN_IMPORTER_MODE=write` → `sudo systemctl restart scan-notify`
+   สแกนที่เข้ามาระหว่างผู้เขียนเดิมหยุดจนถึงเปิด `write` ไม่ถูกเขียนเอง (โหมดเงาขยับจุดล่าสุดไปแล้ว) → เก็บทีหลังด้วย "ค้นหาที่ยังไม่เข้า hosoffice" แล้ว "นำเข้าที่ขาดทั้งหมด"
+5. **ตรวจหลังสลับ:** การ์ดขึ้น "โหมดเขียน", ตัวเลข "เขียนแล้ว" เพิ่มตามสแกนจริง, เปิดแถวล่าสุดใน HeidiSQL ดู `CREATE_BY='SCAN-IMPORTER'` + `COM_NAME='SCAN-IMPORTER'`, ไม่มีเหตุการณ์ SCAN-WATCH ใหม่
+6. **ปุ่ม "ค้นหาที่ยังไม่เข้า hosoffice" / "นำเข้าตามเลข"** บนหน้า Watch: ค้นหาอ่านอย่างเดียวใช้ได้ทุกโหมด ; ปุ่มนำเข้าใช้ได้เฉพาะ `write` — ตรวจตัวอย่าง (เลข เวลา เข้า/ออก เจ้าของ) ก่อนกดยืนยันทุกครั้ง
 
 ## 10. ถ้าติดปัญหา
 

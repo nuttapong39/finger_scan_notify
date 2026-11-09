@@ -59,6 +59,9 @@ def wr(tmp_db, monkeypatch):
     monkeypatch.setattr(hosoffice, 'get_latest_rows_by_person', lambda ids: {i: st['templates'][i] for i in ids if i in st['templates']})
     monkeypatch.setattr(hosoffice, 'insert_scan_rows', insert)
     monkeypatch.setattr(tigersoft, 'get_rows', lambda seqs: {r['seq']: r for r in st['rows'] if r['seq'] in set(seqs)})
+    st['names'] = {'7': 'สมชาย ใจดี'}
+    monkeypatch.setattr(tigersoft, 'get_rows_between', lambda start, end, limit=5000: [r for r in st['rows'] if start <= r['device_time'] < end][:limit])
+    monkeypatch.setattr(hosoffice, 'get_names_by_fingle_ids', lambda ids: {str(i): st['names'][str(i)] for i in ids if str(i) in st['names']})
     st['profiles'] = {}
     monkeypatch.setattr(hosoffice, 'get_hr_profiles', lambda ids: {i: st['profiles'][i] for i in ids if i in st['profiles']})
     return st
@@ -114,6 +117,73 @@ def test_manual_preview_reads_the_scanner_and_writes_nothing(admin_client, wr):
     d = admin_client.get('/api/importer/manual-preview?from=200&to=203').get_json()
     assert (d['on_scanner'], d['not_on_scanner'], d['will_write'], d['already_present'], d['unreleasable']) == (3, 1, 1, 1, [203])
     assert d['writer'] == 'SCAN-IMPORTER-MANUAL' and wr['inserted'] == []
+
+
+def test_manual_preview_says_whose_scan_it_is_when_and_in_or_out(admin_client, wr):
+    wr['rows'] = [fresh(201), dict(fresh(202), mode='1'), fresh(203, person=9)]       # 202 = ออกงาน ; 9 ไม่มีใน hr_person
+    wr['existing'] = {(1, 202)}
+    d = admin_client.get('/api/importer/manual-preview?from=201&to=203').get_json()
+    by_seq = {r['seq']: r for r in d['rows']}
+    assert [r['seq'] for r in d['rows']] == [201, 202, 203]
+    a, b, c = by_seq[201], by_seq[202], by_seq[203]
+    assert (a['status'], a['direction'], a['person_id'], a['name'], a['machine']) == ('will_write', 'เข้างาน', 1007, 'สมชาย ใจดี', 1)
+    assert len(a['time']) == 19 and a['time'][10] == ' '                              # YYYY-MM-DD HH:MM:SS (ถึงวินาที)
+    assert (b['status'], b['direction']) == ('present', 'ออกงาน')
+    assert (c['status'], c['reason'], c['person_id']) == ('unwritable', 'no_person', None)
+
+
+def test_manual_preview_lists_at_most_fifty_rows(admin_client, wr):
+    wr['rows'] = [fresh(1000 + i) for i in range(80)]
+    d = admin_client.get('/api/importer/manual-preview?from=1000&to=1079').get_json()
+    assert len(d['rows']) == 50 and d['rows_truncated'] is True and d['will_write'] == 80
+
+
+def test_manual_preview_and_import_accept_a_list_of_sequences(admin_client, wr):
+    wr['rows'] = [fresh(s) for s in range(201, 211)]
+    d = admin_client.get('/api/importer/manual-preview?seqs=201,205,207').get_json()
+    assert d['on_scanner'] == 3 and d['will_write'] == 3 and [r['seq'] for r in d['rows']] == [201, 205, 207]
+    r = admin_client.post('/api/importer/manual-import', json={'seqs': [201, 205, 207], 'expect': 3})
+    assert r.status_code == 200 and r.get_json()['written'] == 3
+    assert [x['MACHIN_SCAN_ID'] for x in wr['inserted'][-1][1]] == [201, 205, 207]           # ไม่แตะเลขอื่นที่อยู่ระหว่างกลาง
+
+
+def test_a_sequence_list_is_validated(admin_client, wr):
+    too_many = ','.join(str(i) for i in range(1, 202))
+    assert admin_client.get(f'/api/importer/manual-preview?seqs={too_many}').status_code == 400
+    assert admin_client.get('/api/importer/manual-preview?seqs=a,b').status_code == 400
+    assert admin_client.post('/api/importer/manual-import', json={'seqs': [], 'expect': 0}).status_code == 400
+    assert admin_client.post('/api/importer/manual-import', json={'seqs': ['x'], 'expect': 0}).status_code == 400
+
+
+def test_missing_scans_are_found_by_key_and_scans_newer_than_fifteen_minutes_are_set_aside(admin_client, wr):
+    def at_ago(seq, minutes, person=7):
+        t = datetime.now() - timedelta(minutes=minutes)
+        return {'seq': seq, 'machine': 1, 'person': person, 'time': t, 'device_time': t.replace(second=0), 'mode': '0'}
+    wr['rows'] = [at_ago(301, 60), at_ago(302, 60), at_ago(303, 5), at_ago(304, 60, person=9)]
+    wr['existing'] = {(1, 302)}                                       # 302 มีแล้ว ; 303 ใหม่เกินไป (ตัวเดิมยังไม่ทันเขียน) ; 304 ไม่มีใน hr_person
+    d = admin_client.get('/api/importer/missing?days=1').get_json()
+    assert (d['scanned'], d['missing'], d['too_recent'], d['will_write'], d['unwritable']) == (4, 2, 1, 1, 1)
+    assert d['seqs'] == [301] and [(r['seq'], r['status']) for r in d['rows']] == [(301, 'will_write'), (304, 'unwritable')]
+    assert wr['inserted'] == []                                       # ค้นหาไม่เขียนอะไร
+
+
+def test_missing_search_works_in_shadow_mode_and_rejects_bad_windows(admin_client, wr, monkeypatch):
+    monkeypatch.setattr(settings, 'current', settings.load({**WRITE_ENV, 'SCAN_IMPORTER_MODE': 'shadow'}))
+    assert admin_client.get('/api/importer/missing?days=1').status_code == 200
+    assert admin_client.get('/api/importer/missing?days=8').status_code == 400
+    assert admin_client.get('/api/importer/missing?days=0').status_code == 400
+    assert admin_client.get('/api/importer/missing?days=x').status_code == 400
+
+
+def test_missing_search_reports_an_unreachable_scanner(admin_client, wr, monkeypatch):
+    def down(*a, **k):
+        raise tigersoft.TigerUnavailable('เครื่องสแกนต่อไม่ได้')
+    monkeypatch.setattr(tigersoft, 'get_rows_between', down)
+    assert admin_client.get('/api/importer/missing?days=1').status_code == 503
+
+
+def test_missing_search_needs_login(anon_client, wr):
+    assert anon_client.get('/api/importer/missing?days=1').status_code == 401
 
 
 def test_manual_import_writes_with_the_manual_label_and_records_who(admin_client, wr):

@@ -2,7 +2,8 @@
 
 ติดตั้งเครื่องครั้งแรก / ย้ายจาก Windows ดู [SERVER-SETUP-ALMALINUX.md](SERVER-SETUP-ALMALINUX.md) เอกสารนี้ใช้เมื่อเครื่องตั้งค่าแล้ว
 
-> ระบบนี้ **ไม่เขียน hosoffice เลย** และต้องรัน **process เดียว เครื่องเดียว** ([ADR 0001](docs/adr/0001-single-process.md))
+> ระบบนี้ **ไม่เขียน hosoffice** ยกเว้นเมื่อตั้ง `SCAN_IMPORTER_MODE=write` (Scan importer ตัวใหม่ — เขียนเฉพาะ `INSERT` ลง `fingle_scan` ด้วยบัญชี `scan_importer_rw` แยก ดู [SERVER-SETUP หัวข้อ 9.1](SERVER-SETUP-ALMALINUX.md) และ [ADR 0002](docs/adr/0002-scan-importer.md)) — ตั้ง `write` ได้เครื่องเดียวเท่านั้น
+> และต้องรัน **process เดียว เครื่องเดียว** ([ADR 0001](docs/adr/0001-single-process.md))
 
 ## อัปเดตด้วยคำสั่งเดียว
 
