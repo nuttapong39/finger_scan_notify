@@ -54,3 +54,17 @@ def fill_profile(rows):
     n = len(rows)
     return {'always': [c for c in cols if filled[c] == n], 'never': [c for c in cols if filled[c] == 0],
             'sometimes': {c: filled[c] / n for c in cols if 0 < filled[c] < n}}
+
+
+CODE_COLUMNS = ('COM_NAME', 'DAY_TYPE_ID', 'DAY_TYPE_NAME', 'SCAN_TYPE', 'APP_TYPE_SAVE', 'ISCONFIRM', 'ISINPUT')
+MAX_DISTINCT = 12
+
+
+def value_profile(rows, columns=CODE_COLUMNS):
+    """การกระจายค่าของคอลัมน์รหัสที่ตัวนำเข้าเดิมใส่ → {คอลัมน์: {ค่า: จำนวน}} ; คอลัมน์ที่มีค่าต่างกันเกิน MAX_DISTINCT
+    คืน {'__distinct__': n} เท่านั้น (ไม่แสดงค่า เผื่อเป็นข้อมูลบุคคล) — ใช้เฉพาะคอลัมน์รหัส ไม่ใช่ HR_*"""
+    out = {}
+    for c in columns:
+        counts = Counter(repr(r.get(c)) for r in rows)
+        out[c] = dict(counts.most_common()) if len(counts) <= MAX_DISTINCT else {'__distinct__': len(counts)}
+    return out

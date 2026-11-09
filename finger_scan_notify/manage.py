@@ -276,6 +276,9 @@ def cmd_shadow_report(args):
     print('  เติมเสมอ     :', ', '.join(p['always']) or '-')
     print('  ไม่เคยเติม   :', ', '.join(p['never']) or '-')
     print('  เติมบางแถว   :', ', '.join(f'{c} ({v:.0%})' for c, v in p['sometimes'].items()) or '-')
+    print('\nค่าในคอลัมน์รหัสของตัวนำเข้าเดิม (ค่า: จำนวนแถว):')
+    for col, vals in shadow.value_profile(sample).items():
+        print(f'  {col}: ' + (f'ค่าต่างกัน {vals["__distinct__"]} ค่า (ไม่แสดง)' if '__distinct__' in vals else ', '.join(f'{k}={v}' for k, v in vals.items())))
     return 0
 
 
