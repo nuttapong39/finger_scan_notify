@@ -2,14 +2,14 @@
 ไม่ส่งชื่อหรือรหัสบุคคลออกไปเลย — มีแต่เลข จำนวน และวันที่ ; ยังไม่มีปุ่มเขียนจริง (โหมดเขียนยังไม่เปิด)"""
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 
 import database
 import hosoffice
 import settings
 import tigersoft
 
-from scan_importer import plan
+from scan_importer import plan, runner
 
 bp = Blueprint('importer', __name__)
 
@@ -40,7 +40,9 @@ def api_status():
                     'needs_baseline': mode != 'off' and st['checkpoint'] is None,
                     'last_round_at': _when(st['last_round_at']), 'last_error': st['last_error'], 'counts': st['last_counts'],
                     'held': _held_summary(database.get_importer_held()), 'tiger_configured': tigersoft.configured(),
-                    'can_write': False, 'write_blocked_reason': 'โหมดเขียนยังไม่เปิดใช้ (ตอนนี้เทียบอย่างเดียว)'})
+                    'can_write': mode == 'write', 'write_blocked_reason': 'ปล่อยแถวที่กักได้เฉพาะโหมด write (SCAN_IMPORTER_MODE=write ใน .env)',
+                    'audit': [{'at': _when(a['at']), 'who': a['who'], 'action': a['action'], 'detail': a['detail']}
+                              for a in database.get_importer_audit(5)]})
 
 
 @bp.route('/api/importer/baseline', methods=['POST'])
@@ -67,16 +69,31 @@ def api_release_preview():
         return jsonify({'success': False, 'message': 'ระบุช่วงเลข from และ to เป็นตัวเลข'}), 400
     if lo > hi:
         return jsonify({'success': False, 'message': 'from ต้องไม่มากกว่า to'}), 400
-    held = database.get_importer_held(lo, hi)
-    existing = set()
-    if held:
-        oldest = min((plan.row_time(r) for r in held if plan.row_time(r)), default=datetime.now())
-        try:
-            existing = hosoffice.get_existing_keys(oldest)
-        except hosoffice.HosofficeUnavailable as e:
-            return jsonify({'success': False, 'message': f'ต่อ hosoffice ไม่ได้ ({e})'}), 503
-    p = plan.plan_release(held, existing, lo, hi)
+    try:
+        rp = runner.release_plan(lo, hi)
+    except hosoffice.HosofficeUnavailable as e:
+        return jsonify({'success': False, 'message': f'ต่อ hosoffice ไม่ได้ ({e})'}), 503
+    p = rp['plan']
     s = p['summary']
-    return jsonify({'success': True, 'dry_run': True, 'held_in_range': len(held), 'will_write': s['count'],
-                    'already_present': len(p['duplicate']), 'unreleasable': [r['seq'] for r in p['unreleasable']][:50],
+    bad = sorted({r['seq'] for r in p['unreleasable']} | {r['seq'] for r, _ in rp['unbuildable']})
+    return jsonify({'success': True, 'dry_run': True, 'held_in_range': rp['held_in_range'], 'will_write': len(rp['built']),
+                    'already_present': len(p['duplicate']), 'unreleasable': bad[:50],
                     'oldest': _minute(s['oldest']), 'newest': _minute(s['newest']), 'per_day': s['per_day'], 'writer': p['writer']})
+
+
+@bp.route('/api/importer/release', methods=['POST'])
+def api_release():
+    body = request.get_json(silent=True) or {}
+    try:
+        lo, hi, expect = int(body['from']), int(body['to']), int(body['expect'])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'ต้องระบุ from, to และ expect (จำนวนที่เห็นในตัวอย่าง) เป็นตัวเลข'}), 400
+    if lo > hi:
+        return jsonify({'success': False, 'message': 'from ต้องไม่มากกว่า to'}), 400
+    try:
+        n = runner.release(lo, hi, expect, session.get('admin'))
+    except runner.ReleaseRefused as e:
+        return jsonify({'success': False, 'message': str(e)}), 409
+    except (hosoffice.HosofficeUnavailable, hosoffice.HosofficeWriteError) as e:
+        return jsonify({'success': False, 'message': f'ปล่อยไม่สำเร็จ ไม่มีแถวถูกเขียน ({e})'}), 503
+    return jsonify({'success': True, 'written': n, 'message': f'ปล่อยแล้ว {n} แถว'})

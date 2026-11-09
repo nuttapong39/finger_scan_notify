@@ -48,6 +48,7 @@
   </div>
   <div class="form-hint" id="imp-write-note"></div>
   <div id="imp-preview-box" class="form-hint" style="margin-top:8px;"></div>
+  <div id="imp-audit" class="form-hint" style="margin-top:6px;"></div>
 </div>
 
 <div class="card" style="margin-bottom:20px;">
@@ -171,6 +172,11 @@
   const REASON = { old: 'เก่ากว่า 24 ชม.', future: 'เวลาล้ำอนาคต', no_time: 'ไม่มีเวลาสแกน', flood: 'ท่วมเกินเพดานต่อรอบ' };
   const MODE = { off: 'ปิดอยู่', shadow: 'โหมดเงา (เทียบอย่างเดียว ไม่เขียน)' };
   let impWrite = { can: false, reason: '' };
+  let impPreview = null;      // ตัวอย่างล่าสุดที่ดูแล้ว {lo, hi, n} — ปุ่มปล่อยใช้ได้เมื่อช่วงเลขตรงกับตัวอย่างและมีแถวให้เขียน
+  function syncRelease() {
+    const ok = impWrite.can && impPreview && impPreview.n > 0 && String(impPreview.lo) === $('imp-from').value && String(impPreview.hi) === $('imp-to').value;
+    $('imp-release').disabled = !ok;
+  }
   function renderImporter(d) {
     $('imp-mode').textContent = MODE[d.mode] || d.mode;
     $('imp-mode').className = 'badge ' + (d.mode === 'off' ? 'badge-muted' : 'badge-success');
@@ -190,8 +196,10 @@
     err.style.display = msg ? 'flex' : 'none';
     if (msg) setIconText(err, 'triangle-alert', msg);
     impWrite = { can: d.can_write, reason: d.write_blocked_reason };
-    $('imp-release').disabled = !impWrite.can;
-    $('imp-write-note').textContent = impWrite.can ? '' : impWrite.reason;
+    syncRelease();
+    $('imp-write-note').textContent = impWrite.can ? 'ปุ่มปล่อยใช้ได้หลังดูตัวอย่างของช่วงเลขนั้นแล้ว' : impWrite.reason;
+    const a = (d.audit || [])[0];
+    $('imp-audit').textContent = a ? `ล่าสุด: ${a.who || '-'} ปล่อยเลข ${a.detail.from}–${a.detail.to} เขียน ${a.detail.written} แถว เมื่อ ${a.at}` : '';
   }
   function loadImporter() {
     fetch('/api/importer/status').then(r => r.json()).then(d => { if (d.success) renderImporter(d); }).catch(() => {});
@@ -208,13 +216,24 @@
     if (lo === '' || hi === '') { box.textContent = 'ระบุช่วงเลข จาก–ถึง'; return; }
     fetch(`/api/importer/release-preview?from=${encodeURIComponent(lo)}&to=${encodeURIComponent(hi)}`)
       .then(r => r.json()).then(d => {
-        if (!d.success) { box.textContent = d.message; return; }
+        if (!d.success) { box.textContent = d.message; impPreview = null; syncRelease(); return; }
+        impPreview = { lo, hi, n: d.will_write }; syncRelease();
         const days = Object.entries(d.per_day).map(([k, v]) => `${k}=${v}`).join(' · ') || '-';
         box.replaceChildren(
           el('div', `ตัวอย่าง (ยังไม่ได้เขียนอะไร) — กักอยู่ในช่วง ${d.held_in_range} · จะเขียน ${d.will_write} · มีอยู่แล้ว ${d.already_present}` +
                     ` · ปล่อยไม่ได้ ${d.unreleasable.length}${d.unreleasable.length ? ' (เลข ' + d.unreleasable.join(', ') + ')' : ''}`),
           el('div', `เวลาสแกน ${d.oldest || '-'} ถึง ${d.newest || '-'} · ต่อวัน: ${days} · ป้ายผู้เขียน ${d.writer}`));
       }).catch(() => { box.textContent = 'เชื่อมต่อไม่ได้'; });
+  });
+  ['imp-from', 'imp-to'].forEach(id => $(id).addEventListener('input', syncRelease));
+  $('imp-release').addEventListener('click', () => {
+    if (!impPreview) return;
+    if (!confirm(`ปล่อย ${impPreview.n} แถว (เลข ${impPreview.lo}–${impPreview.hi}) ลง hosoffice จริง? ย้อนกลับไม่ได้จากหน้านี้`)) return;
+    $('imp-release').disabled = true;
+    fetch('/api/importer/release', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: impPreview.lo, to: impPreview.hi, expect: impPreview.n }) })
+      .then(r => r.json()).then(d => { $('imp-preview-box').textContent = d.message; impPreview = null; loadImporter(); })
+      .catch(() => { $('imp-preview-box').textContent = 'เชื่อมต่อไม่ได้ — ตรวจสถานะก่อนกดซ้ำ'; });
   });
   loadImporter(); setInterval(loadImporter, 5000);
 })();

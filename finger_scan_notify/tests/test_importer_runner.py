@@ -35,6 +35,19 @@ def imp(tmp_db, monkeypatch):
             raise hosoffice.HosofficeUnavailable('hosoffice ล่ม')
         return set(st['existing'])
 
+    TPL = {'HR_FULLNAME': 'n', 'HR_POSITION_NAME': 'p', 'HR_LEAVEL_NAME': None, 'HR_DEP_NAME': 'd', 'HR_DEP_SUB_NAME': 's',
+           'HR_PERSON_TYPE_NAME': 't'}
+    st.update(inserted=[], insert_fail=False, people={'7': 1007, '8': 1008}, templates={1007: TPL})
+
+    def insert(rows, writer):
+        if st['insert_fail']:
+            raise hosoffice.HosofficeWriteError('เขียนไม่ได้ (ย้อนกลับแล้ว)')
+        st['inserted'].append((writer, list(rows)))
+        return len(rows)
+
+    monkeypatch.setattr(hosoffice, 'get_person_ids', lambda ids: {str(i): st['people'][str(i)] for i in ids if str(i) in st['people']})
+    monkeypatch.setattr(hosoffice, 'get_latest_rows_by_person', lambda ids: {i: st['templates'][i] for i in ids if i in st['templates']})
+    monkeypatch.setattr(hosoffice, 'insert_scan_rows', insert)
     monkeypatch.setattr(tigersoft, 'get_rows_after', rows_after)
     monkeypatch.setattr(tigersoft, 'get_latest_seq', lambda: st['latest'])
     monkeypatch.setattr(hosoffice, 'get_existing_keys', existing)
@@ -146,11 +159,6 @@ def test_release_preview_summarises_without_writing_and_skips_rows_already_prese
 @pytest.mark.parametrize('qs', ['', '?from=a&to=2', '?from=5&to=2'])
 def test_release_preview_rejects_a_bad_range(admin_client, imp, qs):
     assert admin_client.get('/api/importer/release-preview' + qs).status_code == 400
-
-
-def test_settings_reject_a_write_mode_that_does_not_exist_yet():
-    with pytest.raises(settings.SettingsError):
-        settings.load({**PROD, 'SCAN_IMPORTER_MODE': 'write'})
 
 
 def test_the_watch_page_has_the_importer_card_with_a_disabled_release_button(admin_client, imp):

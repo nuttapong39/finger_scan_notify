@@ -239,6 +239,9 @@ def init_db():
         machine INTEGER NOT NULL, seq INTEGER NOT NULL, row_time TEXT, device_time TEXT, person TEXT, mode TEXT,
         reason TEXT NOT NULL, held_at REAL NOT NULL, released_at REAL, PRIMARY KEY (machine, seq)
     )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS importer_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, at REAL NOT NULL, who TEXT, action TEXT NOT NULL, detail TEXT
+    )""")
     # มีค่าเชื่อมต่อ hosoffice ใน .env แล้ว → ไม่เก็บรหัส MySQL ซ้ำใน SQLite (ไฟล์นี้ถูกคัดลอก/สำรองไปที่อื่น)
     if settings.current.hosoffice:
         c.execute("UPDATE db_config SET password='' WHERE COALESCE(password,'') <> ''")
@@ -701,3 +704,24 @@ def get_importer_held(seq_from=None, seq_to=None, open_only=True):
     iso = lambda v: datetime.fromisoformat(v) if v else None   # noqa: E731
     return [{'seq': r['seq'], 'machine': r['machine'], 'person': r['person'], 'mode': r['mode'], 'reason': r['reason'],
              'time': iso(r['row_time']), 'device_time': iso(r['device_time'])} for r in rows]
+
+
+def mark_importer_released(keys, now_ts):
+    """keys = [(machine, seq)] — ปล่อยแล้ว (หรือมีอยู่ใน hosoffice แล้ว) ไม่นับเป็นแถวกักค้าง"""
+    conn = get_sqlite_conn()
+    conn.executemany("UPDATE importer_held SET released_at=? WHERE machine IS ? AND seq=? AND released_at IS NULL",
+                     [(now_ts, m, q) for m, q in keys])
+    conn.commit(); conn.close()
+
+
+def add_importer_audit(who, action, detail, now_ts):
+    conn = get_sqlite_conn()
+    conn.execute("INSERT INTO importer_audit (at, who, action, detail) VALUES (?,?,?,?)", (now_ts, who, action, json.dumps(detail)))
+    conn.commit(); conn.close()
+
+
+def get_importer_audit(limit=5):
+    conn = get_sqlite_conn()
+    rows = conn.execute("SELECT * FROM importer_audit ORDER BY id DESC LIMIT ?", (int(limit),)).fetchall()
+    conn.close()
+    return [{'at': r['at'], 'who': r['who'], 'action': r['action'], 'detail': json.loads(r['detail'] or '{}')} for r in rows]

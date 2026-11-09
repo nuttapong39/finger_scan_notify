@@ -34,7 +34,8 @@ class Settings:
     listen_host: str
     listen_port: int
     tiger: dict | None = field(default=None, repr=False)      # มีรหัสผ่าน — ห้ามโผล่ใน repr/log
-    importer_mode: str = 'off'          # Scan importer ตัวใหม่: off | shadow (เทียบอย่างเดียว) — โหมดเขียนยังไม่เปิดให้ตั้ง
+    importer_mode: str = 'off'          # Scan importer ตัวใหม่: off | shadow (เทียบอย่างเดียว) | write (เขียน hosoffice)
+    importer_write: dict | None = field(default=None, repr=False)   # บัญชีเขียน (มีรหัสผ่าน) + COM_NAME — มีเมื่อ mode=write เท่านั้น
 
     @property
     def is_production(self):
@@ -94,8 +95,18 @@ def load(env):
                  'machine_column': env.get('TIGER_MACHINE_COLUMN', 'MachID').strip()}
 
     importer_mode = (env.get('SCAN_IMPORTER_MODE') or 'off').strip().lower()
-    if importer_mode not in ('off', 'shadow'):
-        raise SettingsError(f'SCAN_IMPORTER_MODE ต้องเป็น off หรือ shadow (ได้ "{importer_mode}") — โหมดเขียนยังไม่เปิดให้ใช้')
+    if importer_mode not in ('off', 'shadow', 'write'):
+        raise SettingsError(f'SCAN_IMPORTER_MODE ต้องเป็น off, shadow หรือ write (ได้ "{importer_mode}")')
+    importer_write = None
+    if importer_mode == 'write':
+        for name, ok in (('HOSOFFICE_HOST', hosoffice), ('TIGER_HOST', tiger),
+                         ('HOSOFFICE_WRITE_USER', env.get('HOSOFFICE_WRITE_USER', '').strip()),
+                         ('HOSOFFICE_WRITE_PASSWORD', env.get('HOSOFFICE_WRITE_PASSWORD', '')),
+                         ('SCAN_IMPORTER_COM_NAME', env.get('SCAN_IMPORTER_COM_NAME', '').strip())):
+            if not ok:
+                raise SettingsError(f'SCAN_IMPORTER_MODE=write ต้องตั้ง {name} ใน .env')
+        importer_write = {'user': env['HOSOFFICE_WRITE_USER'].strip(), 'password': env['HOSOFFICE_WRITE_PASSWORD'],
+                          'com_name': env['SCAN_IMPORTER_COM_NAME'].strip()}
     return Settings(
         app_env=app_env, secret_key=secret, hosoffice=hosoffice,
         monitor_autostart=env.get('MONITOR_AUTOSTART', '').strip().lower() in TRUE_VALUES,
@@ -103,6 +114,7 @@ def load(env):
         listen_port=_port(env, 'LISTEN_PORT', 5050),
         tiger=tiger,
         importer_mode=importer_mode,
+        importer_write=importer_write,
     )
 
 

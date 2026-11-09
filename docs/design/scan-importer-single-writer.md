@@ -112,3 +112,10 @@ hosoffice มีแถวซ้ำเลขเดียวกัน 240 เล�
 - ตัดสินใจกับผู้ใช้: ควบคุมผ่านปุ่มบนหน้า `/watch` (ไม่ใช้คำสั่ง `manage.py release`) · รับให้เว็บถือบัญชีเขียน `scan_importer_rw` (SELECT, INSERT บน `fingle_scan` เท่านั้น) เมื่อถึงขั้นเขียนจริง · การสลับโหมดเงา→เขียนเป็นค่า `SCAN_IMPORTER_MODE` ใน `.env` + restart ไม่ทำเป็นปุ่ม
 - ทำแล้ว (ยังไม่เขียน hosoffice): `scan_importer/runner.py` (รอบทุก 15 วินาที โหมด `off|shadow`) · ตาราง SQLite `importer_state`, `importer_held` · `routes_importer.py` : `GET /api/importer/status`, `POST /api/importer/baseline`, `GET /api/importer/release-preview` · การ์ด "Scan importer" บนหน้า Watch อัปเดตทุก 5 วินาที · ปุ่ม "ยืนยันปล่อย" ปิดอยู่จนกว่าจะมีโหมดเขียน
 - ยังไม่มี: ตัวเขียนจริง (บัญชี C, transaction, ป้าย `SCAN-IMPORTER`/`-RELEASED`), ปุ่มปล่อยจริง + บันทึกว่าใครกด, โหมด `write` ใน settings
+
+### ตัวเขียนจริง + ปุ่มปล่อย (9 พ.ย. 2569) — เขียนโค้ดและทดสอบแล้ว ยังไม่เคยเขียน hosoffice จริง
+- `SCAN_IMPORTER_MODE=write` ต้องมี `HOSOFFICE_WRITE_USER`, `HOSOFFICE_WRITE_PASSWORD`, `SCAN_IMPORTER_COM_NAME`, `TIGER_*` ครบ ไม่งั้นแอปไม่เริ่ม (บอกชื่อค่าที่ขาด) ; รหัสผ่านเขียนไม่ปรากฏใน repr/log
+- `hosoffice.insert_scan_rows` เป็นที่เดียวที่แอปเขียน hosoffice : บัญชีเขียนแยก, หนึ่ง transaction ต่อชุด (พลาดแถวเดียว = ย้อนกลับทั้งชุด), คอลัมน์จำกัดตามรายการ `INSERT_COLS`, ค่าส่งเป็นพารามิเตอร์, ติด `CREATE_BY`
+- รอบเขียน : เขียนเฉพาะแถวที่ `plan_batch` ตัดสินว่า "เขียน" และสร้างแถวได้ครบ (หา `PERSON_ID` + ต้นแบบ `HR_*` เจอ) ; สร้างไม่ได้ = กักด้วยเหตุผล `no_person`/`no_template`/`no_time` ; ขยับจุดล่าสุดหลังเขียนสำเร็จเท่านั้น ; เกินเพดาน 300 = ไม่เขียนสักแถว
+- ปล่อยแถวที่กัก (`POST /api/importer/release`) : เฉพาะโหมด write + ล็อกอิน ; ต้องส่ง `expect` เท่ากับจำนวนที่ตัวอย่างบอก (คำนวณใหม่ตอนสั่ง ไม่ตรง = 409 ไม่เขียน) ; ติดป้าย `SCAN-IMPORTER-RELEASED` ; บันทึก audit (ใคร เมื่อไร ช่วงเลข จำนวน) แสดงบนการ์ด ; สั่งซ้ำไม่เขียนซ้ำ
+- ก่อนเปิดจริง : สร้างบัญชี C ตาม runbook, สำรองตาราง, ปิดตัวนำเข้าเดิมให้เหลือผู้เขียนคนเดียว, เปิด shadow ดูหน้า Watch ก่อน แล้วค่อยเปลี่ยนเป็น write + restart

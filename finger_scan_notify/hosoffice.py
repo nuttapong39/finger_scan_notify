@@ -186,6 +186,48 @@ def get_names_by_fingle_ids(fingle_ids):
     return {str(r['FINGLE_ID']).strip(): (r['name'] or '').strip() for r in rows}
 
 
+class HosofficeWriteError(RuntimeError):
+    """เขียน hosoffice ไม่สำเร็จ (ทั้งชุดถูกย้อนกลับ ไม่มีแถวค้างครึ่งทาง)"""
+
+
+# คอลัมน์ที่ Scan importer เขียนได้ — ชื่อคอลัมน์ไม่เคยมาจากข้อมูลภายนอก (กัน SQL injection ทางชื่อคอลัมน์)
+INSERT_COLS = ('PERSON_ID', 'FINGLE_ID', 'SCAN_DATE_TIME', 'MACHIN_ID', 'MACHIN_SCAN_ID', 'SCAN_TYPE', 'DAY_TYPE_ID', 'DAY_TYPE_NAME',
+               'COM_NAME', 'APP_TYPE_SAVE', 'ISCONFIRM', 'ISINPUT', 'HR_FULLNAME', 'HR_POSITION_NAME', 'HR_LEAVEL_NAME',
+               'HR_DEP_NAME', 'HR_DEP_SUB_NAME', 'HR_PERSON_TYPE_NAME', 'CREATE_BY')
+
+
+def insert_scan_rows(rows, writer):
+    """เขียนแถวใหม่ลง fingle_scan ในหนึ่ง transaction ด้วยบัญชีเขียน (INSERT เท่านั้น) — คืนจำนวนที่เขียน
+    ทุกแถวติดป้าย CREATE_BY = writer ; ผิดพลาดแม้แถวเดียว = ย้อนกลับทั้งชุด ; นี่คือที่เดียวในแอปที่เขียน hosoffice"""
+    if not rows:
+        return 0
+    w = settings.current.importer_write
+    base = connection_params()
+    if not w or not base:
+        raise HosofficeWriteError('ยังไม่ได้ตั้งบัญชีเขียน (SCAN_IMPORTER_MODE=write + HOSOFFICE_WRITE_*)')
+    conn = None
+    try:
+        conn = mysql.connector.connect(host=base['host'], port=int(base['port']), user=w['user'], password=w['password'],
+                                       database=base['database'], connection_timeout=10, charset='utf8mb4', autocommit=False)
+        cur = conn.cursor()
+        marks = ','.join(['%s'] * len(INSERT_COLS))
+        sql = f"INSERT INTO `{_tbl()}` ({','.join(INSERT_COLS)}) VALUES ({marks})"
+        cur.executemany(sql, [tuple(dict(r, CREATE_BY=writer).get(c) for c in INSERT_COLS) for r in rows])
+        conn.commit()
+        cur.close()
+        return len(rows)
+    except Error as e:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Error:
+                pass
+        raise HosofficeWriteError(f'เขียน hosoffice ล้มเหลว (ย้อนกลับทั้งชุดแล้ว): {e}') from e
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def get_existing_keys(since):
     """{(MACHIN_ID, MACHIN_SCAN_ID)} ของแถวที่มีเลขเครื่องและเวลาสแกน >= since — ใช้ดัชนีเวลา (ห้ามค้นตามเลขตรง ๆ : ไม่มีดัชนี)"""
     rows = _query(f"SELECT MACHIN_ID AS m, MACHIN_SCAN_ID AS s FROM `{_tbl()}` WHERE SCAN_DATE_TIME >= %s AND MACHIN_SCAN_ID IS NOT NULL",
