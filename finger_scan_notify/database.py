@@ -234,6 +234,8 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS importer_state (
         id INTEGER PRIMARY KEY CHECK (id = 1), checkpoint INTEGER, last_round_at REAL, last_error TEXT, last_counts TEXT
     )""")
+    if 'totals' not in [r[1] for r in c.execute("PRAGMA table_info(importer_state)").fetchall()]:
+        c.execute("ALTER TABLE importer_state ADD COLUMN totals TEXT")      # ตัวเลขสะสมตั้งแต่ตั้งจุดเริ่มต้น (JSON)
     c.execute("INSERT OR IGNORE INTO importer_state (id) VALUES (1)")
     c.execute("""CREATE TABLE IF NOT EXISTS importer_held (
         machine INTEGER NOT NULL, seq INTEGER NOT NULL, row_time TEXT, device_time TEXT, person TEXT, mode TEXT,
@@ -659,15 +661,17 @@ def get_importer_state():
     row = dict(conn.execute("SELECT * FROM importer_state WHERE id=1").fetchone())
     conn.close()
     row['last_counts'] = json.loads(row['last_counts']) if row.get('last_counts') else {}
+    row['totals'] = json.loads(row['totals']) if row.get('totals') else {}
     return row
 
 
 def save_importer_state(**fields):
-    bad = set(fields) - {'checkpoint', 'last_round_at', 'last_error', 'last_counts'}
+    bad = set(fields) - {'checkpoint', 'last_round_at', 'last_error', 'last_counts', 'totals'}
     if bad:
         raise ValueError(f'ไม่มีฟิลด์: {sorted(bad)}')
-    if 'last_counts' in fields:
-        fields['last_counts'] = json.dumps(fields['last_counts'])
+    for k in ('last_counts', 'totals'):
+        if k in fields:
+            fields[k] = json.dumps(fields[k])
     if not fields:
         return
     conn = get_sqlite_conn()

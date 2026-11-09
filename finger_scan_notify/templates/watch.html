@@ -37,6 +37,7 @@
     <div class="stat-card"><div class="w-kv">กักรอบล่าสุด<b id="imp-heldnow">-</b></div></div>
     <div class="stat-card"><div class="w-kv">กักค้างทั้งหมด<b id="imp-held">-</b></div></div>
   </div>
+  <div class="form-hint" id="imp-totals" style="margin-bottom:6px;"></div>
   <div class="form-hint" id="imp-held-detail" style="margin-bottom:12px;"></div>
   <div class="w-row" style="margin-bottom:10px;">
     <button class="btn btn-outline btn-sm" id="imp-baseline" style="display:none;">{{ icon('map-pin') }} ตั้งจุดเริ่มต้น (ใช้เลขล่าสุดของเครื่องสแกน)</button>
@@ -186,6 +187,11 @@
     $('imp-insert').textContent = c.would_insert == null ? '-' : c.would_insert;
     $('imp-heldnow').textContent = c.held == null ? '-' : c.held + (c.flood ? ' (ท่วม)' : '');
     $('imp-held').textContent = d.held.count;
+    const t = d.totals || {};
+    $('imp-totals').textContent = d.checkpoint == null ? '' :
+      `สะสมตั้งแต่ ${t.since || 'ตั้งจุดเริ่มต้น'}: อ่าน ${t.read || 0} แถว · มีใน hosoffice แล้ว ${t.existing || 0} · ` +
+      `${d.mode === 'write' ? 'เขียนแล้ว ' + (t.inserted || 0) : 'จะเขียน ' + (t.would_insert || 0)} · กัก ${t.held || 0}` +
+      (t.last_new_at ? ` · แถวใหม่ล่าสุด เลข ${t.last_new_seq} เมื่อ ${t.last_new_at}` : ' · ยังไม่เห็นแถวใหม่');
     $('imp-held-detail').textContent = d.held.count
       ? `เลข ${d.held.seq_min}–${d.held.seq_max} · เวลาสแกน ${d.held.oldest} ถึง ${d.held.newest} · สาเหตุ: ` +
         Object.entries(d.held.reasons).map(([k, v]) => `${REASON[k] || k} ${v}`).join(', ')

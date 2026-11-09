@@ -140,6 +140,21 @@ def test_baseline_sets_the_checkpoint_to_the_scanner_latest_once(admin_client, i
     assert database.get_importer_state()['checkpoint'] == 500
 
 
+def test_totals_accumulate_across_rounds_and_a_quiet_round_does_not_erase_what_was_seen(admin_client, imp):
+    admin_client.post('/api/importer/baseline')                                  # จุดเริ่มต้น 500
+    imp['rows'] = [src(501), src(502)]
+    imp['existing'] = {(1, 501)}
+    runner.run_round(NOW)
+    runner.run_round(NOW + timedelta(seconds=15))                                # รอบเงียบ: ไม่มีแถวใหม่
+    t = admin_client.get('/api/importer/status').get_json()['totals']
+    assert (t['read'], t['existing'], t['would_insert'], t['held'], t['inserted']) == (2, 1, 1, 0, 0)
+    assert t['last_new_seq'] == 502 and t['last_new_at'] and t['since']
+    imp['rows'].append(src(503, minutes_ago=3000))                               # แถวเก่า → กัก
+    runner.run_round(NOW + timedelta(seconds=30))
+    t = admin_client.get('/api/importer/status').get_json()['totals']
+    assert (t['read'], t['would_insert'], t['held'], t['last_new_seq']) == (3, 1, 1, 503)
+
+
 def test_baseline_is_refused_when_the_importer_is_off(admin_client, imp, monkeypatch):
     monkeypatch.setattr(settings, 'current', settings.load({**PROD}))
     assert admin_client.post('/api/importer/baseline').status_code == 409

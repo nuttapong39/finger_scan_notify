@@ -39,6 +39,7 @@ def api_status():
     return jsonify({'success': True, 'mode': mode, 'checkpoint': st['checkpoint'],
                     'needs_baseline': mode != 'off' and st['checkpoint'] is None,
                     'last_round_at': _when(st['last_round_at']), 'last_error': st['last_error'], 'counts': st['last_counts'],
+                    'totals': {**st['totals'], 'since': _when(st['totals'].get('since')), 'last_new_at': _when(st['totals'].get('last_new_at'))},
                     'held': _held_summary(database.get_importer_held()), 'tiger_configured': tigersoft.configured(),
                     'can_write': mode == 'write', 'write_blocked_reason': 'ปล่อยแถวที่กักได้เฉพาะโหมด write (SCAN_IMPORTER_MODE=write ใน .env)',
                     'audit': [{'at': _when(a['at']), 'who': a['who'], 'action': a['action'], 'detail': a['detail']}
@@ -57,7 +58,7 @@ def api_baseline():
         return jsonify({'success': False, 'message': f'อ่านเครื่องสแกนไม่ได้ ({e})'}), 503
     if latest is None:
         return jsonify({'success': False, 'message': 'เครื่องสแกนยังไม่มีเลขล่าสุด'}), 503
-    database.save_importer_state(checkpoint=latest)
+    database.save_importer_state(checkpoint=latest, totals={'since': datetime.now().timestamp()})
     return jsonify({'success': True, 'checkpoint': latest, 'message': f'ตั้งจุดเริ่มต้นที่เลข {latest} (จะนำเข้าเฉพาะเลขที่ใหม่กว่านี้)'})
 
 

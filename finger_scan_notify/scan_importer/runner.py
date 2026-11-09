@@ -92,8 +92,21 @@ def run_round(now=None):
               'flood': p['flood'], 'source_rows': len(rows)}
     if inserted is not None:
         counts['inserted'] = inserted
-    database.save_importer_state(checkpoint=p['next_checkpoint'], last_round_at=ts, last_error=None, last_counts=counts)
+    database.save_importer_state(checkpoint=p['next_checkpoint'], last_round_at=ts, last_error=None, last_counts=counts,
+                                 totals=add_totals(st['totals'], rows, p, len(held), inserted, ts))
     return {'status': 'ok' if rows else 'idle', **counts}
+
+
+def add_totals(totals, rows, p, held_n, inserted, ts):
+    """ตัวเลขสะสมตั้งแต่ตั้งจุดเริ่มต้น (หน้า Watch โชว์ — รอบล่าสุดที่เงียบจะไม่ลบสิ่งที่เห็นไปแล้ว) ; มีแต่จำนวนและเลข ไม่มีข้อมูลบุคคล"""
+    t = dict(totals)
+    for k, n in (('read', len(rows)), ('existing', len(p['duplicate'])), ('would_insert', len(p['insert'])),
+                 ('inserted', inserted or 0), ('held', held_n)):
+        t[k] = t.get(k, 0) + n
+    if rows:
+        t['last_new_at'] = ts
+        t['last_new_seq'] = max(r['seq'] for r in rows)
+    return t
 
 
 def loop():
