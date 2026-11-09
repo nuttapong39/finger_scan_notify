@@ -170,8 +170,9 @@
   load(); setInterval(load, 30000);
 
   // ── Scan importer (อัปเดตสดทุก 5 วินาที ; แสดงเฉพาะเลข/จำนวน/วันที่) ──
-  const REASON = { old: 'เก่ากว่า 24 ชม.', future: 'เวลาล้ำอนาคต', no_time: 'ไม่มีเวลาสแกน', flood: 'ท่วมเกินเพดานต่อรอบ' };
-  const MODE = { off: 'ปิดอยู่', shadow: 'โหมดเงา (เทียบอย่างเดียว ไม่เขียน)' };
+  const REASON = { old: 'เก่ากว่า 24 ชม.', future: 'เวลาล้ำอนาคต', no_time: 'ไม่มีเวลาสแกน', flood: 'ท่วมเกินเพดานต่อรอบ',
+                   no_person: 'ไม่พบคนใน hr_person', no_template: 'ไม่มีแถวต้นแบบ HR (คนที่ยังไม่เคยมีแถวใน hosoffice)' };
+  const MODE = { off: 'ปิดอยู่', shadow: 'โหมดเงา (เทียบอย่างเดียว ไม่เขียน)', write: 'โหมดเขียน (เขียน hosoffice จริง)' };
   let impWrite = { can: false, reason: '' };
   let impPreview = null;      // ตัวอย่างล่าสุดที่ดูแล้ว {lo, hi, n} — ปุ่มปล่อยใช้ได้เมื่อช่วงเลขตรงกับตัวอย่างและมีแถวให้เขียน
   function syncRelease() {
@@ -194,7 +195,8 @@
       (t.last_new_at ? ` · แถวใหม่ล่าสุด เลข ${t.last_new_seq} เมื่อ ${t.last_new_at}` : ' · ยังไม่เห็นแถวใหม่');
     $('imp-held-detail').textContent = d.held.count
       ? `เลข ${d.held.seq_min}–${d.held.seq_max} · เวลาสแกน ${d.held.oldest} ถึง ${d.held.newest} · สาเหตุ: ` +
-        Object.entries(d.held.reasons).map(([k, v]) => `${REASON[k] || k} ${v}`).join(', ')
+        Object.entries(d.held.reasons).map(([k, v]) => `${REASON[k] || k} ${v}`).join(', ') +
+        (d.held.people_without_template ? ` · ต้องให้ HR ตรวจ/ลงแถวแรก ${d.held.people_without_template} คน` : '')
       : 'ไม่มีแถวที่กัก';
     $('imp-baseline').style.display = d.needs_baseline ? '' : 'none';
     const err = $('imp-error');

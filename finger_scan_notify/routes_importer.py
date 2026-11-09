@@ -27,7 +27,9 @@ def _held_summary(rows):
     reasons = {}
     for r in rows:
         reasons[r['reason']] = reasons.get(r['reason'], 0) + 1
-    return {'count': len(rows), 'reasons': reasons, 'seq_min': rows[0]['seq'] if rows else None,
+    # จำนวนคน (ไม่ใช่แถว) ที่สร้างแถวให้ไม่ได้ เพราะไม่มี PERSON_ID/ต้นแบบ HR_* — เป็นตัวเลขล้วน ไม่ส่งรหัสบุคคลออก
+    people = len({r['person'] for r in rows if r['reason'] in ('no_person', 'no_template') and r.get('person') is not None})
+    return {'count': len(rows), 'reasons': reasons, 'people_without_template': people, 'seq_min': rows[0]['seq'] if rows else None,
             'seq_max': rows[-1]['seq'] if rows else None,
             'oldest': _minute(times[0]) if times else None, 'newest': _minute(times[-1]) if times else None}
 

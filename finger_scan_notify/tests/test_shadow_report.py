@@ -61,6 +61,7 @@ from test_settings import PROD  # noqa: E402
 
 
 def test_shadow_report_command_prints_counts_and_fill_profile_without_personal_data(tmp_db, monkeypatch, capsys):
+    monkeypatch.setitem(globals(), 'NOW', datetime.now())          # คำสั่งใช้เวลาจริง — แถวทดสอบต้องอิงเวลาจริง ไม่งั้นเก่าเกิน 24 ชม. แล้วเทสต์พัง
     monkeypatch.setattr(settings, 'current', settings.load({**PROD, 'TIGER_HOST': 'h', 'TIGER_DATABASE': 'd',
                                                             'TIGER_USER': 'u', 'TIGER_PASSWORD': 'secret-pw'}))
     monkeypatch.setattr(hosoffice, 'get_device_window', lambda n: [hos(10), hos(11)])

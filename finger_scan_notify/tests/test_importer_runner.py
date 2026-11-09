@@ -124,12 +124,21 @@ def test_api_needs_login(anon_client):
 
 def test_status_shows_mode_checkpoint_and_held_summary_without_personal_data(admin_client, imp):
     database.save_importer_state(checkpoint=100)
-    imp['rows'] = [src(101, person=424242), src(102, minutes_ago=3000, person=424242)]
+    imp['rows'] = [src(101, person=424242), src(102, minutes_ago=3000, person=424242)]       # 424242 ไม่มีใน hr_person
     runner.run_round(NOW)
     d = admin_client.get('/api/importer/status').get_json()
     assert d['mode'] == 'shadow' and d['checkpoint'] == 102 and d['can_write'] is False
-    assert d['held']['count'] == 1 and d['held']['reasons'] == {'old': 1}
+    assert d['held']['count'] == 2 and d['held']['reasons'] == {'old': 1, 'no_person': 1}
+    assert d['held']['people_without_template'] == 1
     assert '424242' not in admin_client.get('/api/importer/status').get_data(as_text=True)
+
+
+def test_shadow_mode_holds_rows_it_could_not_build_but_never_writes(imp):
+    database.save_importer_state(checkpoint=100)
+    imp['rows'] = [src(101), src(102, person=8)]            # 8 มี PERSON_ID แต่ยังไม่เคยมีแถวต้นแบบ
+    r = runner.run_round(NOW)
+    assert (r['would_insert'], r['held']) == (1, 1) and imp['inserted'] == []
+    assert [(h['seq'], h['reason']) for h in database.get_importer_held()] == [(102, 'no_template')]
 
 
 def test_baseline_sets_the_checkpoint_to_the_scanner_latest_once(admin_client, imp):

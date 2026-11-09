@@ -76,31 +76,34 @@ def run_round(now=None):
         return {'status': 'error', 'error': str(e)}
     p = plan.plan_batch(rows, existing, now, checkpoint=st['checkpoint'])
     held = [{'src': r, 'reason': hold_reason(r, now, p['flood'])} for r in p['held']]
-    inserted = None
-    if settings.current.importer_mode == 'write' and p['insert']:
+    inserted, would_n = None, 0
+    if p['insert']:
         try:
+            # โหมดเงาก็สร้างแถวด้วย (อ่านอย่างเดียว) เพื่อให้เห็นก่อนเปิดเขียนว่ามีแถว/คนที่สร้างไม่ได้ (ไม่มี PERSON_ID หรือต้นแบบ HR_*) เท่าไร
             built, unbuildable = build_rows(p['insert'])
             held += [{'src': r, 'reason': why} for r, why in unbuildable]
             database.add_importer_held(held, ts)
-            inserted = hosoffice.insert_scan_rows(built, WRITER)
+            would_n = len(built)
+            if settings.current.importer_mode == 'write':
+                inserted = hosoffice.insert_scan_rows(built, WRITER)
         except (hosoffice.HosofficeUnavailable, hosoffice.HosofficeWriteError) as e:
             database.save_importer_state(last_round_at=ts, last_error=str(e)[:300])
             return {'status': 'error', 'error': str(e)}
     else:
         database.add_importer_held(held, ts)
-    counts = {'would_insert': len(p['insert']), 'held': len(held), 'duplicate': len(p['duplicate']),
+    counts = {'would_insert': would_n, 'held': len(held), 'duplicate': len(p['duplicate']),
               'flood': p['flood'], 'source_rows': len(rows)}
     if inserted is not None:
         counts['inserted'] = inserted
     database.save_importer_state(checkpoint=p['next_checkpoint'], last_round_at=ts, last_error=None, last_counts=counts,
-                                 totals=add_totals(st['totals'], rows, p, len(held), inserted, ts))
+                                 totals=add_totals(st['totals'], rows, p, would_n, len(held), inserted, ts))
     return {'status': 'ok' if rows else 'idle', **counts}
 
 
-def add_totals(totals, rows, p, held_n, inserted, ts):
+def add_totals(totals, rows, p, would_n, held_n, inserted, ts):
     """ตัวเลขสะสมตั้งแต่ตั้งจุดเริ่มต้น (หน้า Watch โชว์ — รอบล่าสุดที่เงียบจะไม่ลบสิ่งที่เห็นไปแล้ว) ; มีแต่จำนวนและเลข ไม่มีข้อมูลบุคคล"""
     t = dict(totals)
-    for k, n in (('read', len(rows)), ('existing', len(p['duplicate'])), ('would_insert', len(p['insert'])),
+    for k, n in (('read', len(rows)), ('existing', len(p['duplicate'])), ('would_insert', would_n),
                  ('inserted', inserted or 0), ('held', held_n)):
         t[k] = t.get(k, 0) + n
     if rows:
