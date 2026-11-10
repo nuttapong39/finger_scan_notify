@@ -96,6 +96,15 @@ def test_login_page_is_public(anon_client):
     assert r.status_code == 200 and 'name="password"' in r.get_data(as_text=True)
 
 
+def test_a_head_request_to_login_is_not_a_wrong_password_attempt(anon_client, admin_account, monkeypatch):
+    """curl -I / ตัวตรวจสุขภาพใช้ HEAD: ต้องได้ 200 เหมือน GET และไม่นับเป็นรหัสผิด (ไม่งั้น 5 ครั้งล็อก IP 15 นาที)"""
+    clock = [1_000_000.0]
+    monkeypatch.setattr(auth, '_now', lambda: clock[0])
+    for _ in range(6):
+        assert anon_client.head('/login').status_code == 200
+    assert login(anon_client).status_code == 302                     # ยังล็อกอินได้ ไม่ถูกล็อก
+
+
 # ── ล็อกอิน ───────────────────────────────────────────────────
 def test_login_success_and_logout(anon_client, admin_account):
     r = login(anon_client)

@@ -38,15 +38,16 @@ def build_rows(src_rows):
     ฐานข้อมูลล่ม = raise (ผู้เรียกจบรอบโดยไม่ขยับจุด)"""
     pids = hosoffice.get_person_ids([r.get('person') for r in src_rows if r.get('person') is not None])
     pid_of = {r['seq']: pids.get(str(r.get('person')).strip()) for r in src_rows}
-    known = [v for v in pid_of.values() if v is not None]
-    templates = hosoffice.get_latest_rows_by_person(known)
-    # คนที่ไม่เคยมีแถว (พนักงานใหม่) → สร้าง HR_* จากข้อมูล HR ตรง ๆ เหมือนตัวเดิม ; แถวเก่าของคนเดิมยังเป็นต้นแบบที่ใช้ก่อน (ยืนยันแล้ว 397/400)
-    missing = [p for p in known if p not in templates]
-    profiles = (hosoffice.get_hr_profiles(missing) or {}) if missing else {}
+    known = sorted({v for v in pid_of.values() if v is not None})
+    # HR_* มาจากข้อมูล HR ปัจจุบัน เหมือนตัวเดิมที่อ่าน HR สดทุกครั้ง (ตรง 399/400 ; แถวเดียวที่ต่างคือ HR เพิ่งเปลี่ยน) —
+    # คัดลอกจากแถวเก่าก่อนไม่ได้ เพราะหลังตัวเดิมหยุด แถวล่าสุดของมันค้างตายตัว คนที่ HR เปลี่ยนตำแหน่ง/แผนกจะได้ค่าเก่าไปเรื่อย ๆ
+    # แถวเก่าของคนเดิมเป็นตัวสำรองเมื่อ HR ไม่ครบหรือบัญชีอ่านตาราง HR ไม่ได้ (get_hr_profiles คืน None)
+    profiles = (hosoffice.get_hr_profiles(known) or {}) if known else {}
+    templates = hosoffice.get_latest_rows_by_person([p for p in known if p not in profiles])
     built, unbuildable = [], []
     for r in src_rows:
         pid = pid_of[r['seq']]
-        row = plan.build_row(r, pid, templates.get(pid) or profiles.get(pid), _consts())
+        row = plan.build_row(r, pid, profiles.get(pid) or templates.get(pid), _consts())
         if row is not None:
             built.append(row)
         else:

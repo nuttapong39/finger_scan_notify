@@ -94,15 +94,33 @@ def test_a_new_employee_without_earlier_rows_is_written_from_the_hr_data(wr):
     r = runner.run_round(NOW)
     assert r['inserted'] == 2 and r['held'] == 0
     by_seq = {x['MACHIN_SCAN_ID']: x for x in wr['inserted'][0][1]}
-    assert by_seq[101]['HR_FULLNAME'] == 'ใหม่   พนักงาน' and by_seq[102]['HR_FULLNAME'] == 'n'     # คนเดิมยังใช้ต้นแบบจากแถวเก่า
+    assert by_seq[101]['HR_FULLNAME'] == 'ใหม่   พนักงาน' and by_seq[102]['HR_FULLNAME'] == 'n'     # คนเดิมที่ HR ไม่ครบ/อ่านไม่ได้ ใช้แถวเก่าสำรอง
 
 
-def test_an_earlier_row_wins_over_the_hr_data(wr):
-    wr['profiles'] = {1007: dict(TPL, HR_FULLNAME='จาก HR')}
+def test_the_current_hr_data_wins_over_an_earlier_row(wr):
+    """ตัวเดิมอ่าน HR สดทุกครั้ง: คนที่ HR เปลี่ยนตำแหน่ง/แผนกหลังแถวล่าสุดของตัวเดิม ต้องได้ค่าใหม่ ไม่ค้างค่าเก่าหลังตัวเดิมหยุด"""
+    wr['profiles'] = {1007: dict(TPL, HR_FULLNAME='จาก HR', HR_POSITION_NAME='ตำแหน่งใหม่')}
     database.save_importer_state(checkpoint=100)
     wr['rows'] = [src(101)]
     runner.run_round(NOW)
-    assert wr['inserted'][0][1][0]['HR_FULLNAME'] == 'n'
+    row = wr['inserted'][0][1][0]
+    assert row['HR_FULLNAME'] == 'จาก HR' and row['HR_POSITION_NAME'] == 'ตำแหน่งใหม่'
+
+
+def test_an_earlier_row_is_the_fallback_when_the_hr_data_is_incomplete(wr):
+    wr['profiles'] = {}                                       # HR ของคน 7 ไม่ครบ → ไม่มีโปรไฟล์
+    database.save_importer_state(checkpoint=100)
+    wr['rows'] = [src(101)]
+    r = runner.run_round(NOW)
+    assert r['inserted'] == 1 and wr['inserted'][0][1][0]['HR_FULLNAME'] == 'n'
+
+
+def test_an_earlier_row_is_the_fallback_when_the_account_cannot_read_the_hr_tables(wr, monkeypatch):
+    monkeypatch.setattr(hosoffice, 'get_hr_profiles', lambda ids: None)       # ไม่มีสิทธิ์ตาราง HR
+    database.save_importer_state(checkpoint=100)
+    wr['rows'] = [src(101)]
+    r = runner.run_round(NOW)
+    assert r['inserted'] == 1 and wr['inserted'][0][1][0]['HR_FULLNAME'] == 'n'
 
 
 # ── นำเข้าตามเลขที่ระบุเอง (สแกนที่ตกหล่นก่อนจุดเริ่มต้น) ──

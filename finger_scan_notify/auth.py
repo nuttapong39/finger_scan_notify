@@ -209,7 +209,7 @@ def install(app, secret_key):
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
     next_url = request.values.get('next', '')
-    if request.method == 'GET':
+    if request.method != 'POST':                    # GET และ HEAD (curl -I, ตัวตรวจสุขภาพ) ไม่ใช่การกรอกรหัส จึงไม่นับรหัสผิด
         if session.get('admin'):
             return redirect(_safe_next(next_url))
         return render_template('login.html', next=next_url, error=None)

@@ -118,6 +118,17 @@ def test_templates_from_the_database_replace_peers_in_the_sample():
     assert c['no_template'] == 0 and c['identical'] == 1
 
 
+def test_the_comparison_builds_rows_the_same_way_as_the_importer_hr_data_first_then_the_earlier_row():
+    sample = [real(13, person=8)]
+    tpl = {1008: {'HR_FULLNAME': 'n', 'HR_POSITION_NAME': 'p', 'HR_LEAVEL_NAME': None, 'HR_DEP_NAME': 'd', 'HR_DEP_SUB_NAME': 's',
+                  'HR_PERSON_TYPE_NAME': 't'}}
+    profiles = {1008: dict(tpl[1008], HR_POSITION_NAME='ตำแหน่งใหม่')}
+    with_hr = shadow.compare_with_real(sample, {13: source(13, person=8)}, {'COM_NAME': 'PC'}, tpl, profiles)
+    assert with_hr['identical'] == 0 and with_hr['differing'] == {'HR_POSITION_NAME': 1}          # ใช้ HR ปัจจุบันก่อนแถวเก่า
+    without_hr = shadow.compare_with_real(sample, {13: source(13, person=8)}, {'COM_NAME': 'PC'}, tpl, {})
+    assert without_hr['identical'] == 1                                                         # HR ไม่ครบ → แถวเก่าเป็นตัวสำรอง
+
+
 def test_hr_compare_counts_columns_that_differ_without_showing_values():
     sample = [{'PERSON_ID': 1, 'HR_FULLNAME': 'a', 'HR_POSITION_NAME': 'p', 'HR_LEAVEL_NAME': '', 'HR_DEP_NAME': 'd', 'HR_DEP_SUB_NAME': 's',
                'HR_PERSON_TYPE_NAME': 't'},
